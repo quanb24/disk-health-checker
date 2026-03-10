@@ -1,0 +1,30 @@
+[project]
+name = "disk-health-checker"
+version = "0.1.0"
+description = "CLI tool to assess the health of recently formatted disks (SMART, filesystem, surface, stress, integrity)."
+authors = [
+  { name = "Disk Health Checker", email = "noreply@example.com" }
+]
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["disk", "storage", "health", "SMART", "filesystem", "stress-test"]
+
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+  "Topic :: System :: Systems Administration",
+  "Topic :: System :: Hardware"
+]
+
+dependencies = []
+
+[project.scripts]
+disk-health-checker = "disk_health_checker.cli:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
