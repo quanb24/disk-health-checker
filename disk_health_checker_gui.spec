@@ -138,8 +138,8 @@ if is_macos:
         icon=_ICON,
         bundle_identifier="com.quanb24.disk-health-checker",
         info_plist={
-            "CFBundleShortVersionString": "0.1.0",
-            "CFBundleVersion": "0.1.0",
+            "CFBundleShortVersionString": "0.1.1",
+            "CFBundleVersion": "0.1.1",
             "CFBundleDisplayName": "Disk Health Checker",
             "NSHighResolutionCapable": True,
         },
