@@ -1,6 +1,6 @@
 [project]
 name = "disk-health-checker"
-version = "0.1.0"
+version = "0.1.1"
 description = "CLI tool to assess the health of recently formatted disks (SMART, filesystem, surface, stress, integrity)."
 authors = [
   { name = "Disk Health Checker", email = "noreply@example.com" }
@@ -30,6 +30,9 @@ disk-health-checker = "disk_health_checker.cli:main"
 
 [project.gui-scripts]
 disk-health-checker-gui = "disk_health_checker.gui.app:main"
+
+[tool.setuptools.packages.find]
+include = ["disk_health_checker*"]
 
 [build-system]
 requires = ["setuptools>=61.0"]

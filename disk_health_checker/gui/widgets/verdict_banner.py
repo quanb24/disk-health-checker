@@ -125,6 +125,32 @@ class VerdictBanner(QFrame):
 
         self._apply_card(vr.verdict)
 
+    def show_usb_blocked(self, device: str = ""):
+        """Show a non-alarming UNKNOWN state for USB enclosure blocking."""
+        self._verdict_label.setText("UNKNOWN")
+        self._verdict_label.setStyleSheet("color: #ffb74d; background: transparent;")
+        self._score_label.setText("")
+        self._desc_label.setText(
+            "USB enclosure is blocking SMART data — "
+            "this is a hardware limitation, not a drive failure"
+        )
+        self._desc_label.setStyleSheet("color: #bbb; background: transparent;")
+        if device:
+            self._drive_info.setText(f"Device: {device}  ·  Connection: USB")
+            self._drive_info.setStyleSheet("color: #777; background: transparent;")
+            self._drive_info.show()
+        else:
+            self._drive_info.hide()
+        # Use a warm amber card instead of gray (not alarming) or red (not a failure)
+        self.setStyleSheet(
+            "VerdictBanner {"
+            "  background-color: #2a2518;"
+            "  border: 1px solid #5a4a2a;"
+            "  border-left: 4px solid #ffb74d;"
+            "  border-radius: 8px;"
+            "}"
+        )
+
     def show_error(self, message: str):
         self._verdict_label.setText("ERROR")
         self._verdict_label.setStyleSheet("color: #ef5350; background: transparent;")

@@ -93,6 +93,23 @@ class NextStepsPanel(QFrame):
                 )
             self._steps.addWidget(label)
 
+    def show_usb_blocked(self):
+        """Show actionable steps specific to USB enclosure blocking."""
+        self._clear_steps()
+        steps = [
+            "Connect the drive directly via SATA (remove from enclosure) and re-scan.",
+            "Or use a USB dock/adapter that supports SAT passthrough (e.g. StarTech, Sabrent).",
+            "This is a hardware limitation — not a problem with the drive or this tool.",
+        ]
+        for i, step in enumerate(steps, 1):
+            label = QLabel(f"{i}.  {step}")
+            label.setWordWrap(True)
+            label.setStyleSheet(
+                "color: #bbb; background: transparent; border: none; "
+                "padding: 2px 0;"
+            )
+            self._steps.addWidget(label)
+
     def show_error(self, message: str):
         self._clear_steps()
         label = QLabel(f"1.  {message}")

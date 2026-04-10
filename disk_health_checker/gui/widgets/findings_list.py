@@ -137,6 +137,41 @@ class FindingsList(QScrollArea):
             gl.addWidget(msg, stretch=1)
             self._layout.addWidget(gap)
 
+    def show_usb_blocked(self, types_tried: list[str] | None = None):
+        """Show an informative card explaining USB enclosure blocking."""
+        self._clear()
+        card = QFrame()
+        card.setStyleSheet(
+            "background-color: #2d2818; border: 1px solid #5a4a2a; "
+            "border-left: 3px solid #ffb74d; border-radius: 5px;"
+        )
+        cl = QVBoxLayout(card)
+        cl.setContentsMargins(12, 10, 12, 10)
+        cl.setSpacing(6)
+
+        header = QLabel("USB Enclosure Blocking SMART")
+        hf = header.font()
+        hf.setBold(True)
+        header.setFont(hf)
+        header.setStyleSheet("color: #ffb74d; background: transparent; border: none;")
+        cl.addWidget(header)
+
+        explanation = QLabel(
+            "The USB-to-SATA bridge chip inside this enclosure is preventing "
+            "SMART health data from being read. The drive itself is likely fine "
+            "— this is a common hardware limitation."
+        )
+        explanation.setWordWrap(True)
+        explanation.setStyleSheet("color: #bbb; background: transparent; border: none;")
+        cl.addWidget(explanation)
+
+        if types_tried:
+            tried = QLabel(f"Modes attempted: {', '.join(types_tried)}")
+            tried.setStyleSheet("color: #888; background: transparent; border: none; font-size: 11px;")
+            cl.addWidget(tried)
+
+        self._layout.addWidget(card)
+
     def show_error(self, message: str):
         self._clear()
         card = QFrame()

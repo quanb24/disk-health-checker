@@ -253,6 +253,27 @@ def _print_smart_banner(check) -> None:
             print(f"  {i}. {rec}")
 
 
+def _print_usb_blocked_banner(check) -> None:
+    """Print a clear explanation when a USB enclosure blocks SMART."""
+    print("Verdict:   UNKNOWN")
+    print()
+    print("Reason:    USB enclosure is blocking SMART passthrough")
+    print()
+    print("  The USB-to-SATA bridge chip inside this external enclosure")
+    print("  is preventing SMART health data from reaching the host.")
+    print("  This does NOT mean the drive is failing — it means health")
+    print("  cannot be assessed through this connection.")
+    print()
+    types_tried = check.details.get("device_types_tried", [])
+    if types_tried:
+        print(f"  Modes tried: {', '.join(types_tried)}")
+        print()
+    if check.recommendations:
+        print("What you can do:")
+        for i, rec in enumerate(check.recommendations, 1):
+            print(f"  {i}. {rec}")
+
+
 def _print_human_suite(result: SuiteResult) -> None:
     """Print human-readable output.
 
@@ -261,12 +282,14 @@ def _print_human_suite(result: SuiteResult) -> None:
     and multi-check suites, fall back to the structured report.
     """
     # Single-check SMART result with verdict data -> banner format.
-    if (
-        len(result.check_results) == 1
-        and "verdict" in result.check_results[0].details
-    ):
-        _print_smart_banner(result.check_results[0])
-        return
+    if len(result.check_results) == 1:
+        single = result.check_results[0]
+        if "verdict" in single.details:
+            _print_smart_banner(single)
+            return
+        if single.details.get("failure_reason") == "usb_bridge_blocked":
+            _print_usb_blocked_banner(single)
+            return
 
     # Multi-check suite (e.g. `full` command) or legacy checks.
     print(f"Disk Health Check — {result.target}")
@@ -279,6 +302,9 @@ def _print_human_suite(result: SuiteResult) -> None:
             _print_smart_banner(check)
             print()
             print("-" * 60)
+            print()
+        elif check.details.get("failure_reason") == "usb_bridge_blocked":
+            _print_usb_blocked_banner(check)
             print()
         else:
             # Legacy check — simple format.

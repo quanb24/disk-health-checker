@@ -141,6 +141,7 @@ class MainWindow(QMainWindow):
             return
 
         self._scan_device = device
+        transport = self._drive_selector.current_transport()
 
         # Disable controls
         self._scan_btn.setEnabled(False)
@@ -157,8 +158,9 @@ class MainWindow(QMainWindow):
         self._status_bar.showMessage(f"Scanning {device}...")
 
         # Launch background worker
-        self._worker = ScanWorker(device)
+        self._worker = ScanWorker(device, transport=transport)
         self._worker.finished.connect(self._on_scan_complete)
+        self._worker.usb_blocked.connect(self._on_usb_blocked)
         self._worker.error.connect(self._on_scan_error)
         self._worker.start()
 
@@ -174,6 +176,18 @@ class MainWindow(QMainWindow):
         kind = snapshot.device_kind.value.upper()
         self._status_bar.showMessage(
             f"Scan complete — {model} ({kind}) — {verdict.verdict.value}"
+        )
+
+        self._restore_controls()
+
+    def _on_usb_blocked(self, device: str, types_tried: list):
+        self._progress.hide()
+
+        self._verdict_banner.show_usb_blocked(device)
+        self._findings_list.show_usb_blocked(types_tried)
+        self._next_steps.show_usb_blocked()
+        self._status_bar.showMessage(
+            f"USB enclosure blocking SMART on {device}"
         )
 
         self._restore_controls()

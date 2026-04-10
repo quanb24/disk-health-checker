@@ -119,26 +119,54 @@ def interpret_smart(data: Dict[str, Any]) -> CheckResult:
     )
 
 
-def run_smart_check(config: SmartConfig) -> CheckResult:
+def run_smart_check(config: SmartConfig, *, transport: str | None = None) -> CheckResult:
     """
     Run SMART diagnostics for the given device using smartctl if available.
+
+    Args:
+        config: SMART check configuration with device path.
+        transport: Optional bus protocol hint (e.g. "USB", "SATA", "NVMe")
+            from disk enumeration. Enables smarter USB fallback behavior.
     """
     from .errors import (
         SmartctlNotInstalled,
         SmartNotSupported,
         SmartctlTimeout,
+        UsbBridgeBlocked,
     )
 
     try:
-        result = collect_smart(config.device)
+        result = collect_smart(config.device, transport=transport)
     except SmartctlNotInstalled as exc:
         logger.warning("smartctl not installed: %s", exc)
         return CheckResult(
             check_name="SMART",
             status=Severity.UNKNOWN,
             summary=f"SMART check unavailable: {exc}",
-            details={},
+            details={"failure_reason": "smartctl_not_installed"},
             recommendations=[str(exc), "Ensure the device path is correct."],
+        )
+    except UsbBridgeBlocked as exc:
+        logger.warning("USB bridge blocked SMART: %s", exc.device)
+        return CheckResult(
+            check_name="SMART",
+            status=Severity.UNKNOWN,
+            summary=(
+                "USB enclosure is blocking SMART data — "
+                "the drive itself may be fine, but health cannot be assessed "
+                "through this connection."
+            ),
+            details={
+                "failure_reason": "usb_bridge_blocked",
+                "device_types_tried": exc.types_tried,
+            },
+            recommendations=[
+                "Connect the drive directly via SATA (not through USB) and re-scan.",
+                "Or use a USB dock/adapter known to support SAT passthrough "
+                "(e.g. StarTech, Sabrent).",
+                "This is a hardware limitation of the enclosure's USB-to-SATA bridge, "
+                "not a problem with the drive.",
+            ],
         )
     except SmartNotSupported as exc:
         logger.warning("SMART not supported: %s", exc)
@@ -146,7 +174,7 @@ def run_smart_check(config: SmartConfig) -> CheckResult:
             check_name="SMART",
             status=Severity.UNKNOWN,
             summary=f"SMART check unavailable: {exc}",
-            details={},
+            details={"failure_reason": "smart_not_supported"},
             recommendations=[
                 str(exc),
                 "Run as a privileged user if required by the OS.",
@@ -158,7 +186,7 @@ def run_smart_check(config: SmartConfig) -> CheckResult:
             check_name="SMART",
             status=Severity.UNKNOWN,
             summary=f"SMART check unavailable: {exc}",
-            details={},
+            details={"failure_reason": "timeout"},
             recommendations=[
                 str(exc),
                 "The drive may be unresponsive. Try disconnecting and reconnecting.",
@@ -170,7 +198,7 @@ def run_smart_check(config: SmartConfig) -> CheckResult:
             check_name="SMART",
             status=Severity.UNKNOWN,
             summary=f"SMART check unavailable: {exc}",
-            details={},
+            details={"failure_reason": "unknown"},
             recommendations=[
                 "Ensure the device path is correct.",
                 "Run as a privileged user if required by the OS.",

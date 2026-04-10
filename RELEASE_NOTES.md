@@ -1,3 +1,23 @@
+# Release Notes — v0.1.1
+
+## What's new in v0.1.1
+
+### Improved external USB drive handling
+
+- **Smarter USB bridge fallback chain** — when an external drive blocks SMART, the tool now tries multiple passthrough modes (SAT, SAT-12, SAT-16, Sunplus, JMicron) before giving up. Early exit when the OS confirms the device can't support SCSI-based passthrough.
+- **New `UsbBridgeBlocked` error classification** — clearly distinguishes "USB enclosure blocking SMART" from "drive failing", "permission denied", "smartctl missing", or "timeout". Each failure type now carries a `failure_reason` in the output.
+- **Better CLI output** — when a USB enclosure blocks SMART, the CLI now explains what happened, why, and what the user can do (connect via direct SATA, use a SAT-compatible dock, etc.) instead of a generic "SMART check unavailable".
+- **Better GUI output** — USB-blocked drives show an amber informational state (not alarming red), with a clear explanation that the enclosure is the barrier, not the drive. Actionable next steps are provided.
+- **Transport-aware scanning** — disk enumeration protocol (USB, SATA, NVMe) is now passed to the SMART collector, enabling smarter retry decisions.
+- **14 new tests** for USB bridge fallback, early stop, chain exhaustion, success recording, and no-regression on internal drives. Test count: 144 (was 130).
+
+### What this does NOT do
+
+- Does not bypass hardware that blocks SMART — if the USB bridge drops all commands, no software can read health data.
+- Does not fake a PASS verdict — UNKNOWN remains honest when evidence is missing.
+
+---
+
 # Release Notes — v0.1.0
 
 ## What is Disk Health Checker?

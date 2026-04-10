@@ -64,6 +64,13 @@ class DriveSelector(QWidget):
             return self._disks[idx].device_node
         return None
 
+    def current_transport(self) -> str | None:
+        """Return the bus protocol of the selected drive (e.g. "USB", "NVMe")."""
+        idx = self._combo.currentIndex()
+        if 0 <= idx < len(self._disks):
+            return self._disks[idx].protocol
+        return None
+
     def set_enabled(self, enabled: bool):
         self._combo.setEnabled(enabled)
         self._refresh_btn.setEnabled(enabled)
