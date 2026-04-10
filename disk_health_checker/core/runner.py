@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 from ..models.config import (
@@ -59,7 +59,7 @@ def run_full_suite(
     global_config: GlobalConfig,
     quick_surface: bool = True,
 ) -> SuiteResult:
-    started = datetime.utcnow()
+    started = datetime.now(timezone.utc)
     results: List[CheckResult] = []
 
     # SMART
@@ -137,7 +137,7 @@ def run_full_suite(
             )
         )
 
-    finished = datetime.utcnow()
+    finished = datetime.now(timezone.utc)
     overall = aggregate_status(results)
     return SuiteResult(
         target=f"device={device}, mount={mount_point}",

@@ -1,0 +1,30 @@
+{
+  "_fixture_note": "SYNTHETIC — hand-crafted from NVMe 1.4 spec and smartmontools docs, not a real drive capture.",
+  "smartctl": {"version": [7, 4]},
+  "device": {"name": "/dev/nvme0n1", "type": "nvme", "protocol": "NVMe"},
+  "model_name": "Samsung SSD 980 PRO 1TB",
+  "serial_number": "S5GXNF0R000000",
+  "firmware_version": "5B2QGXA7",
+  "user_capacity": {"bytes": 1000204886016},
+  "smart_status": {"passed": true},
+  "nvme_smart_health_information_log": {
+    "critical_warning": 0,
+    "temperature": 38,
+    "available_spare": 100,
+    "available_spare_threshold": 10,
+    "percentage_used": 2,
+    "data_units_read": 12345678,
+    "data_units_written": 9876543,
+    "host_reads": 234567890,
+    "host_writes": 123456789,
+    "controller_busy_time": 1234,
+    "power_cycles": 500,
+    "power_on_hours": 4200,
+    "unsafe_shutdowns": 12,
+    "media_errors": 0,
+    "num_err_log_entries": 0,
+    "warning_temp_time": 0,
+    "critical_comp_time": 0
+  },
+  "temperature": {"current": 38}
+}

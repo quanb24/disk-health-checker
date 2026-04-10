@@ -1,0 +1,30 @@
+{
+  "_fixture_note": "SYNTHETIC — simulates an NVMe drive with critical_warning bits set. Not a real drive capture.",
+  "smartctl": {"version": [7, 4]},
+  "device": {"name": "/dev/nvme0n1", "type": "nvme", "protocol": "NVMe"},
+  "model_name": "Intel SSD 660p 512GB",
+  "serial_number": "BTNH000000000",
+  "firmware_version": "002C",
+  "user_capacity": {"bytes": 512110190592},
+  "smart_status": {"passed": false},
+  "nvme_smart_health_information_log": {
+    "critical_warning": 5,
+    "temperature": 72,
+    "available_spare": 3,
+    "available_spare_threshold": 10,
+    "percentage_used": 107,
+    "data_units_read": 55555555,
+    "data_units_written": 44444444,
+    "host_reads": 555555555,
+    "host_writes": 444444444,
+    "controller_busy_time": 99999,
+    "power_cycles": 5000,
+    "power_on_hours": 42000,
+    "unsafe_shutdowns": 200,
+    "media_errors": 47,
+    "num_err_log_entries": 892,
+    "warning_temp_time": 3600,
+    "critical_comp_time": 120
+  },
+  "temperature": {"current": 72}
+}

@@ -1,2 +1,0 @@
-[console_scripts]
-disk-health-checker = disk_health_checker.cli:main

@@ -4,7 +4,7 @@ import argparse
 import json
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 from .core.runner import run_full_suite
@@ -30,11 +30,18 @@ from .utils.platform import get_platform_info
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    from . import __version__
+
     parser = argparse.ArgumentParser(
         prog="disk-health-checker",
         description="Check the health of a recently formatted disk (SMART, filesystem, surface, stress, integrity).",
     )
 
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+    )
     parser.add_argument(
         "--json",
         action="store_true",
@@ -149,22 +156,140 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _format_capacity(nbytes: int | None) -> str:
+    if nbytes is None or nbytes <= 0:
+        return "unknown"
+    size = float(nbytes)
+    for unit in ("B", "KB", "MB", "GB", "TB", "PB"):
+        if size < 1024 or unit == "PB":
+            return f"{size:.1f} {unit}"
+        size /= 1024.0
+    return f"{size:.1f} PB"  # pragma: no cover
+
+
+def _format_hours(hours: int | None) -> str:
+    if hours is None:
+        return "unknown"
+    if hours < 24:
+        return f"{hours} hours"
+    days = hours // 24
+    if days < 365:
+        return f"~{days:,} days ({hours:,} hours)"
+    years = days / 365.25
+    return f"~{years:.1f} years ({hours:,} hours)"
+
+
+def _print_smart_banner(check) -> None:
+    """Print the new verdict-first banner for a SMART check result."""
+    d = check.details
+
+    # ---- Drive identity ----
+    model = d.get("model_name") or "Unknown model"
+    serial = d.get("serial_number") or ""
+    firmware = d.get("firmware_version") or ""
+    capacity = _format_capacity(d.get("capacity_bytes"))
+
+    # Determine drive interface from findings/device_kind or fall back.
+    device_kind = d.get("device_kind", "")
+    kind_label = device_kind.upper() if device_kind else ""
+
+    print(f"Disk:      {model}" + (f"  ({kind_label})" if kind_label else ""))
+    identity_parts = []
+    if firmware:
+        identity_parts.append(f"Firmware: {firmware}")
+    if serial:
+        # Truncate serial for privacy in shared terminals.
+        display_serial = serial[:10] + "..." if len(serial) > 10 else serial
+        identity_parts.append(f"Serial: {display_serial}")
+    identity_parts.append(f"Capacity: {capacity}")
+    if identity_parts:
+        print(f"           {', '.join(identity_parts)}")
+
+    poh = d.get("power_on_hours")
+    drive_type = "SSD" if d.get("is_ssd") else "HDD" if d.get("rotation_rate_rpm") else ""
+    age_line_parts = []
+    if poh is not None:
+        age_line_parts.append(f"Age: {_format_hours(poh)}")
+    if drive_type:
+        age_line_parts.append(f"Type: {drive_type}")
+    if age_line_parts:
+        print(f"           {'  |  '.join(age_line_parts)}")
+
+    print()
+
+    # ---- Verdict ----
+    verdict = d.get("verdict", check.status.value)
+    confidence = d.get("confidence", "")
+    score = d.get("health_score")
+    score_str = f"score {score}/100, " if score is not None else ""
+    conf_str = f"confidence {confidence}" if confidence else ""
+    print(f"Verdict:   {verdict}  ({score_str}{conf_str})")
+
+    # ---- Findings ----
+    findings = d.get("findings", [])
+    if findings:
+        print()
+        print("Why:")
+        for f in findings:
+            sev = f.get("severity", "")
+            marker = {"FAIL": "!!", "WARN": "!", "INFO": " "}.get(sev, " ")
+            print(f"  {marker} {f.get('message', '')}")
+
+    # ---- Evidence gaps ----
+    missing = d.get("evidence_missing", [])
+    if missing:
+        print()
+        print(f"Signals missing: {', '.join(missing)}")
+    elif findings is not None:
+        # Only show "none" when we actually checked.
+        print()
+        print("Signals missing: none")
+
+    # ---- Recommendations ----
+    if check.recommendations:
+        print()
+        print("Next steps:")
+        for i, rec in enumerate(check.recommendations, 1):
+            print(f"  {i}. {rec}")
+
+
 def _print_human_suite(result: SuiteResult) -> None:
-    print(f"Disk Health Check Report for {result.target}")
-    print(f"Started:  {result.started_at.isoformat()} UTC")
-    print(f"Finished: {result.finished_at.isoformat()} UTC")
-    print(f"Overall Status: {result.overall_status.value}")
+    """Print human-readable output.
+
+    For SMART-based checks that carry the new verdict/findings structure,
+    use the banner format.  For legacy checks (filesystem, surface, etc.)
+    and multi-check suites, fall back to the structured report.
+    """
+    # Single-check SMART result with verdict data -> banner format.
+    if (
+        len(result.check_results) == 1
+        and "verdict" in result.check_results[0].details
+    ):
+        _print_smart_banner(result.check_results[0])
+        return
+
+    # Multi-check suite (e.g. `full` command) or legacy checks.
+    print(f"Disk Health Check — {result.target}")
+    print(f"Overall: {result.overall_status.value}")
     print()
 
     for check in result.check_results:
-        print(f"=== {check.check_name} ===")
-        print(f"Status: {check.status.value}")
-        print(f"Summary: {check.summary}")
-        if check.recommendations:
-            print("Recommendations:")
-            for rec in check.recommendations:
-                print(f"  - {rec}")
-        print()
+        if "verdict" in check.details:
+            # SMART check within a suite — use banner.
+            _print_smart_banner(check)
+            print()
+            print("-" * 60)
+            print()
+        else:
+            # Legacy check — simple format.
+            print(f"=== {check.check_name} ===")
+            print(f"Status: {check.status.value}")
+            print(f"Summary: {check.summary}")
+            if check.recommendations:
+                print("Recommendations:")
+                for rec in check.recommendations:
+                    print(f"  - {rec}")
+            print()
 
 
 def _exit_code_from_severity(sev: Severity) -> int:
@@ -175,6 +300,39 @@ def _exit_code_from_severity(sev: Severity) -> int:
     if sev == Severity.CRITICAL:
         return 2
     return 3
+
+
+def _resolve_device(args: argparse.Namespace, info, *, json_mode: bool) -> str | None:
+    """Resolve the target device from --device or interactive selection.
+
+    Returns the device path, or None if resolution failed (caller should
+    print an appropriate message and return exit code 1).
+
+    When json_mode is True, interactive selection is skipped to prevent
+    deadlocking automation pipelines that consume JSON stdout.
+    """
+    device = getattr(args, "device", None)
+    if device:
+        return device
+
+    if json_mode:
+        print(
+            "Error: --device is required when --json is set. "
+            "Interactive disk selection is disabled in JSON mode.",
+            file=sys.stderr,
+        )
+        return None
+
+    if info.is_macos:
+        disks = list_disks()
+        selected = select_disk_interactively(disks)
+        if selected:
+            return selected.device_node
+        print("No disk selected; aborting.")
+        return None
+
+    print("A --device must be provided when automatic disk detection is not available.")
+    return None
 
 
 def main(argv: List[str] | None = None) -> int:
@@ -213,20 +371,14 @@ def main(argv: List[str] | None = None) -> int:
                 print(f"- {d.device_node}: {d.size_human}, {location}, mounts: {mounts}")
         return 0
 
-    # full command
-    if args.command == "full":
-        device = args.device
-        if not device and info.is_macos:
-            disks = list_disks()
-            selected = select_disk_interactively(disks)
-            if not selected:
-                print("No disk selected; aborting.")
-                return 1
-            device = selected.device_node
+    # Commands that require a device path: full, smart, doctor.
+    if args.command in ("full", "smart", "doctor"):
+        device = _resolve_device(args, info, json_mode=args.json)
         if not device:
-            print("A --device must be provided when automatic disk detection is not available.")
             return 1
 
+    # full command
+    if args.command == "full":
         # On macOS, run the specialized workflow; elsewhere, fall back to generic suite
         if info.is_macos:
             suite = run_macos_full_workflow(device=device, global_config=global_config)
@@ -245,23 +397,11 @@ def main(argv: List[str] | None = None) -> int:
         return _exit_code_from_severity(suite.overall_status)
 
     # Individual checks
-    start = datetime.utcnow()
+    start = datetime.now(timezone.utc)
     check_result = None
     target_desc = ""
 
     if args.command == "smart":
-        device = args.device
-        if not device and info.is_macos:
-            disks = list_disks()
-            selected = select_disk_interactively(disks)
-            if not selected:
-                print("No disk selected; aborting.")
-                return 1
-            device = selected.device_node
-        if not device:
-            print("A --device must be provided when automatic disk detection is not available.")
-            return 1
-
         cfg = SmartConfig(device=device)
         check_result = run_smart_check(cfg)
         target_desc = f"device={device}"
@@ -291,19 +431,6 @@ def main(argv: List[str] | None = None) -> int:
         check_result = run_integrity_check(cfg, global_config)
         target_desc = f"mount={args.mount}"
     elif args.command == "doctor":
-        device = args.device
-        if not device and info.is_macos:
-            disks = list_disks()
-            selected = select_disk_interactively(disks)
-            if not selected:
-                print("No disk selected; aborting.")
-                return 1
-            device = selected.device_node
-        if not device:
-            print("A --device must be provided when automatic disk detection is not available.")
-            return 1
-
-        # Doctor focuses on explanations; still returns a standard CheckResult
         check_result = run_doctor(device)
         target_desc = f"device={device}"
     else:  # pragma: no cover - defensive
@@ -315,7 +442,7 @@ def main(argv: List[str] | None = None) -> int:
         overall_status=check_result.status,
         check_results=[check_result],
         started_at=start,
-        finished_at=datetime.utcnow(),
+        finished_at=datetime.now(timezone.utc),
     )
 
     if args.json:

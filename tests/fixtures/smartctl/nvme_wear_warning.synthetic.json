@@ -1,0 +1,30 @@
+{
+  "_fixture_note": "SYNTHETIC — simulates an NVMe drive with high wear and low spare. Not a real drive capture.",
+  "smartctl": {"version": [7, 4]},
+  "device": {"name": "/dev/nvme0n1", "type": "nvme", "protocol": "NVMe"},
+  "model_name": "WD Black SN850 2TB",
+  "serial_number": "2142H7800000",
+  "firmware_version": "613200WD",
+  "user_capacity": {"bytes": 2000398934016},
+  "smart_status": {"passed": true},
+  "nvme_smart_health_information_log": {
+    "critical_warning": 0,
+    "temperature": 45,
+    "available_spare": 15,
+    "available_spare_threshold": 10,
+    "percentage_used": 92,
+    "data_units_read": 98765432,
+    "data_units_written": 87654321,
+    "host_reads": 987654321,
+    "host_writes": 876543210,
+    "controller_busy_time": 45678,
+    "power_cycles": 2100,
+    "power_on_hours": 28000,
+    "unsafe_shutdowns": 45,
+    "media_errors": 0,
+    "num_err_log_entries": 3,
+    "warning_temp_time": 120,
+    "critical_comp_time": 0
+  },
+  "temperature": {"current": 45}
+}
