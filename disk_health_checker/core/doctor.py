@@ -132,12 +132,17 @@ def _explain_findings(result: CheckResult) -> List[str]:
     return explanations
 
 
-def run_doctor(device: str) -> CheckResult:
+def run_doctor(device: str, *, transport: str | None = None) -> CheckResult:
     """
     Run a SMART check and return a CheckResult whose summary and recommendations
     focus on plain-English explanations and next steps.
+
+    Args:
+        device: Block device path (e.g. /dev/disk4).
+        transport: Optional bus protocol hint (e.g. "USB", "NVMe") from
+            disk enumeration, forwarded to the SMART collector.
     """
-    smart_result = run_smart_check(SmartConfig(device=device))
+    smart_result = run_smart_check(SmartConfig(device=device), transport=transport)
 
     explanations = _explain_findings(smart_result)
     summary = smart_result.summary

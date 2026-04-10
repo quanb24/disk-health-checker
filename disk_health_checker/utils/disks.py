@@ -83,7 +83,11 @@ def _list_disks_macos() -> List[DiskInfo]:
                 check=True,
             )
             inf = plistlib.loads(info_proc.stdout)
-            model = inf.get("DeviceModel")
+            model = (
+                inf.get("DeviceModel")
+                or inf.get("MediaName")
+                or inf.get("IORegistryEntryName")
+            )
             protocol = inf.get("BusProtocol")
             internal = inf.get("Internal")
             virtual = inf.get("VirtualOrPhysical") == "Virtual"

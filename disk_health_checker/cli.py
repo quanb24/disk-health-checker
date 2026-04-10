@@ -65,6 +65,17 @@ def _build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    # Shared --json flag for subparsers so it works both before and after
+    # the subcommand name (e.g. `--json smart` AND `smart --json`).
+    _json_parent = argparse.ArgumentParser(add_help=False)
+    _json_parent.add_argument(
+        "--json",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        dest="json",
+        help="Output results as JSON.",
+    )
+
     # detect
     detect = subparsers.add_parser(
         "detect",
@@ -77,21 +88,27 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # full suite (macOS-focused workflow by default)
-    full = subparsers.add_parser("full", help="Run a safe, non-destructive validation workflow.")
+    full = subparsers.add_parser(
+        "full", parents=[_json_parent],
+        help="Run a safe, non-destructive validation workflow.",
+    )
     full.add_argument(
         "--device",
         help="Block device path (e.g. /dev/disk2). If omitted on macOS, you will be prompted to select a disk.",
     )
 
     # SMART
-    smart = subparsers.add_parser("smart", help="Run SMART diagnostics and health assessment.")
+    smart = subparsers.add_parser(
+        "smart", parents=[_json_parent],
+        help="Run SMART diagnostics and health assessment.",
+    )
     smart.add_argument(
         "--device",
         help="Block device path (e.g. /dev/disk2). If omitted on macOS, you will be prompted to select a disk.",
     )
 
     # filesystem
-    fs = subparsers.add_parser("fs", help="Run filesystem verification only.")
+    fs = subparsers.add_parser("fs", parents=[_json_parent], help="Run filesystem verification only.")
     fs.add_argument("--mount", required=True, help="Filesystem mount point.")
     fs.add_argument(
         "--fsck",
@@ -100,7 +117,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # surface
-    surface = subparsers.add_parser("surface", help="Run disk surface scan only.")
+    surface = subparsers.add_parser("surface", parents=[_json_parent], help="Run disk surface scan only.")
     surface.add_argument("--device", required=True, help="Block device path (e.g. /dev/sdX).")
     surface.add_argument(
         "--full",
@@ -109,7 +126,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # stress
-    stress = subparsers.add_parser("stress", help="Run read/write stress test only.")
+    stress = subparsers.add_parser("stress", parents=[_json_parent], help="Run read/write stress test only.")
     stress.add_argument("--mount", required=True, help="Filesystem mount point.")
     stress.add_argument(
         "--duration",
@@ -131,7 +148,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # integrity
-    integrity = subparsers.add_parser("integrity", help="Run data integrity verification only.")
+    integrity = subparsers.add_parser("integrity", parents=[_json_parent], help="Run data integrity verification only.")
     integrity.add_argument("--mount", required=True, help="Filesystem mount point.")
     integrity.add_argument(
         "--manifest",
@@ -145,7 +162,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # doctor / explain
     doctor = subparsers.add_parser(
-        "doctor",
+        "doctor", parents=[_json_parent],
         help="Explain SMART results in beginner-friendly language and suggest next steps.",
     )
     doctor.add_argument(
@@ -274,6 +291,30 @@ def _print_usb_blocked_banner(check) -> None:
             print(f"  {i}. {rec}")
 
 
+def _print_error_banner(check) -> None:
+    """Print a clean banner for SMART errors (not installed, timeout, etc.)."""
+    reason = check.details.get("failure_reason", "unknown")
+    reason_labels = {
+        "smartctl_not_installed": "smartctl is not installed",
+        "smart_not_supported": "SMART not supported on this device",
+        "timeout": "smartctl timed out waiting for the drive",
+        "unknown": "SMART check failed",
+    }
+    label = reason_labels.get(reason, "SMART check failed")
+
+    print("Verdict:   UNKNOWN")
+    print()
+    print(f"Reason:    {label}")
+    print()
+    if check.summary:
+        print(f"  {check.summary}")
+        print()
+    if check.recommendations:
+        print("Next steps:")
+        for i, rec in enumerate(check.recommendations, 1):
+            print(f"  {i}. {rec}")
+
+
 def _print_human_suite(result: SuiteResult) -> None:
     """Print human-readable output.
 
@@ -290,6 +331,9 @@ def _print_human_suite(result: SuiteResult) -> None:
         if single.details.get("failure_reason") == "usb_bridge_blocked":
             _print_usb_blocked_banner(single)
             return
+        if "failure_reason" in single.details:
+            _print_error_banner(single)
+            return
 
     # Multi-check suite (e.g. `full` command) or legacy checks.
     print(f"Disk Health Check — {result.target}")
@@ -305,6 +349,9 @@ def _print_human_suite(result: SuiteResult) -> None:
             print()
         elif check.details.get("failure_reason") == "usb_bridge_blocked":
             _print_usb_blocked_banner(check)
+            print()
+        elif "failure_reason" in check.details:
+            _print_error_banner(check)
             print()
         else:
             # Legacy check — simple format.
@@ -328,18 +375,33 @@ def _exit_code_from_severity(sev: Severity) -> int:
     return 3
 
 
-def _resolve_device(args: argparse.Namespace, info, *, json_mode: bool) -> str | None:
+def _resolve_device(
+    args: argparse.Namespace, info, *, json_mode: bool
+) -> tuple[str, str | None] | None:
     """Resolve the target device from --device or interactive selection.
 
-    Returns the device path, or None if resolution failed (caller should
-    print an appropriate message and return exit code 1).
+    Returns ``(device_path, transport)`` on success, or ``None`` if
+    resolution failed (caller should print an appropriate message and
+    return exit code 1).
 
-    When json_mode is True, interactive selection is skipped to prevent
+    *transport* is the bus protocol (e.g. ``"USB"``, ``"NVMe"``) when
+    known from disk enumeration, or ``None`` when the device was given
+    via ``--device`` without interactive selection.
+
+    When *json_mode* is True, interactive selection is skipped to prevent
     deadlocking automation pipelines that consume JSON stdout.
     """
     device = getattr(args, "device", None)
     if device:
-        return device
+        # When --device is given directly we don't know the transport.
+        # Try a quick lookup on macOS so USB fallback still works.
+        transport = None
+        if info.is_macos:
+            for d in list_disks():
+                if d.device_node == device:
+                    transport = d.protocol
+                    break
+        return device, transport
 
     if json_mode:
         print(
@@ -353,7 +415,7 @@ def _resolve_device(args: argparse.Namespace, info, *, json_mode: bool) -> str |
         disks = list_disks()
         selected = select_disk_interactively(disks)
         if selected:
-            return selected.device_node
+            return selected.device_node, selected.protocol
         print("No disk selected; aborting.")
         return None
 
@@ -398,10 +460,13 @@ def main(argv: List[str] | None = None) -> int:
         return 0
 
     # Commands that require a device path: full, smart, doctor.
+    device = None
+    transport = None
     if args.command in ("full", "smart", "doctor"):
-        device = _resolve_device(args, info, json_mode=args.json)
-        if not device:
+        resolved = _resolve_device(args, info, json_mode=args.json)
+        if not resolved:
             return 1
+        device, transport = resolved
 
     # full command
     if args.command == "full":
@@ -429,7 +494,7 @@ def main(argv: List[str] | None = None) -> int:
 
     if args.command == "smart":
         cfg = SmartConfig(device=device)
-        check_result = run_smart_check(cfg)
+        check_result = run_smart_check(cfg, transport=transport)
         target_desc = f"device={device}"
     elif args.command == "fs":
         cfg = FsConfig(mount_point=args.mount, run_external_fsck=args.fsck)
@@ -457,7 +522,7 @@ def main(argv: List[str] | None = None) -> int:
         check_result = run_integrity_check(cfg, global_config)
         target_desc = f"mount={args.mount}"
     elif args.command == "doctor":
-        check_result = run_doctor(device)
+        check_result = run_doctor(device, transport=transport)
         target_desc = f"device={device}"
     else:  # pragma: no cover - defensive
         parser.error(f"Unknown command: {args.command}")
