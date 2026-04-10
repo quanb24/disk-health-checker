@@ -470,16 +470,20 @@ def main(argv: List[str] | None = None) -> int:
 
     # full command
     if args.command == "full":
-        # On macOS, run the specialized workflow; elsewhere, fall back to generic suite
         if info.is_macos:
             suite = run_macos_full_workflow(device=device, global_config=global_config)
         else:
-            suite = run_full_suite(
-                device=device,
-                mount_point="/",  # placeholder; non-macOS full workflow remains generic
-                global_config=global_config,
-                quick_surface=True,
+            # The generic suite hardcoded mount_point="/" which caused
+            # stress/integrity writes to target the host root filesystem.
+            # Disable until a proper Linux workflow is designed.
+            print(
+                "Error: 'full' is currently only supported on macOS.\n"
+                "On Linux, use individual commands instead:\n"
+                "  disk-health-checker smart --device /dev/sdX\n"
+                "  disk-health-checker doctor --device /dev/sdX",
+                file=sys.stderr,
             )
+            return 1
 
         if args.json:
             print(json.dumps(suite.to_dict(), indent=2))
@@ -505,6 +509,13 @@ def main(argv: List[str] | None = None) -> int:
         check_result = run_surface_scan(cfg, global_config)
         target_desc = f"device={args.device}"
     elif args.command == "stress":
+        if not args.allow_destructive:
+            print(
+                "Error: 'stress' performs write operations and requires --allow-destructive.\n"
+                "  disk-health-checker --allow-destructive stress --mount /Volumes/MyDisk",
+                file=sys.stderr,
+            )
+            return 1
         cfg = StressConfig(
             mount_point=args.mount,
             duration_seconds=args.duration,
@@ -514,6 +525,13 @@ def main(argv: List[str] | None = None) -> int:
         check_result = run_stress_test(cfg, global_config)
         target_desc = f"mount={args.mount}"
     elif args.command == "integrity":
+        if not args.allow_destructive:
+            print(
+                "Error: 'integrity' performs write operations and requires --allow-destructive.\n"
+                "  disk-health-checker --allow-destructive integrity --mount /Volumes/MyDisk",
+                file=sys.stderr,
+            )
+            return 1
         cfg = IntegrityConfig(
             mount_point=args.mount,
             manifest_path=args.manifest,

@@ -1,4 +1,4 @@
-# Publish Checklist — v0.1.0
+# Publish Checklist — v0.1.1
 
 Copy-paste launch checklist. Do every step in order.
 
@@ -14,7 +14,7 @@ pytest -q
 
 # Version
 python3 -m disk_health_checker --version
-# Expected: disk-health-checker 0.1.0
+# Expected: disk-health-checker 0.1.1
 
 # GUI smoke
 python3 -m disk_health_checker.gui
@@ -36,8 +36,8 @@ hdiutil create \
   -volname "Disk Health Checker" \
   -srcfolder "dist/Disk Health Checker.app" \
   -ov -format UDZO \
-  "dist/DiskHealthChecker-0.1.0.dmg"
-# Expected: dist/DiskHealthChecker-0.1.0.dmg (~40-60 MB)
+  "dist/DiskHealthChecker-0.1.1.dmg"
+# Expected: dist/DiskHealthChecker-0.1.1.dmg (~40-60 MB)
 ```
 
 ## 3. Verify built app
@@ -49,7 +49,7 @@ open "dist/Disk Health Checker.app"
 # Close app
 
 # Mount and launch from DMG
-open "dist/DiskHealthChecker-0.1.0.dmg"
+open "dist/DiskHealthChecker-0.1.1.dmg"
 # Drag to Desktop or run from mounted volume
 # Verify: app launches, same behavior as above
 # Eject DMG
@@ -60,34 +60,34 @@ open "dist/DiskHealthChecker-0.1.0.dmg"
 ```bash
 git add -A
 git status   # Review — no secrets, no .venv, no dist/
-git commit -m "v0.1.0: complete backend refactor, GUI, and packaging"
-git tag v0.1.0
+git commit -m "v0.1.1: complete backend refactor, GUI, and packaging"
+git tag v0.1.1
 git push origin main --tags
 ```
 
 ## 5. Create GitHub release
 
 ```bash
-gh release create v0.1.0 \
-  "dist/DiskHealthChecker-0.1.0.dmg" \
-  --title "v0.1.0 — Initial Release" \
+gh release create v0.1.1 \
+  "dist/DiskHealthChecker-0.1.1.dmg" \
+  --title "v0.1.1 — Initial Release" \
   --notes-file RELEASE_NOTES.md
 ```
 
 Or manually via github.com:
 1. Go to Releases > Draft a new release
-2. Tag: `v0.1.0`
-3. Title: `v0.1.0 — Initial Release`
+2. Tag: `v0.1.1`
+3. Title: `v0.1.1 — Initial Release`
 4. Body: paste contents of `RELEASE_NOTES.md`
-5. Attach: `DiskHealthChecker-0.1.0.dmg`
+5. Attach: `DiskHealthChecker-0.1.1.dmg`
 6. Publish
 
 ## 6. Post-publish verification
 
 ```bash
 # Download the DMG like a real user
-gh release download v0.1.0 --pattern "*.dmg" --dir /tmp/verify
-open /tmp/verify/DiskHealthChecker-0.1.0.dmg
+gh release download v0.1.1 --pattern "*.dmg" --dir /tmp/verify
+open /tmp/verify/DiskHealthChecker-0.1.1.dmg
 # Right-click app > Open (Gatekeeper bypass)
 # Verify: launches, scans, shows verdict
 ```

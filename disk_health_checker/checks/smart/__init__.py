@@ -3,9 +3,11 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict
 
+from typing import Tuple
+
 from ...models.config import SmartConfig
 from ...models.results import CheckResult, Severity
-from ...models.smart_types import DriveKind, FindingSeverity, Verdict
+from ...models.smart_types import DriveKind, FindingSeverity, SmartSnapshot, Verdict, VerdictResult
 from .collector import collect_smart
 from .errors import SmartctlError
 from .normalize import detect_drive_kind, parse_ata, parse_nvme
@@ -29,6 +31,26 @@ _VERDICT_TO_SEVERITY = {
     Verdict.FAIL: Severity.CRITICAL,
     Verdict.UNKNOWN: Severity.UNKNOWN,
 }
+
+
+def collect_and_interpret(
+    device: str, *, transport: str | None = None
+) -> Tuple[SmartSnapshot, VerdictResult]:
+    """Collect SMART data and return parsed snapshot + verdict.
+
+    This is the shared entry point for both CLI and GUI.  Raises
+    SmartctlError subtypes on collection failure — callers handle
+    errors according to their own UI conventions.
+    """
+    result = collect_smart(device, transport=transport)
+    kind = detect_drive_kind(result.data)
+    if kind == DriveKind.NVME:
+        snapshot = parse_nvme(result.data)
+        verdict = evaluate_nvme(snapshot)
+    else:
+        snapshot = parse_ata(result.data)
+        verdict = evaluate_ata(snapshot)
+    return snapshot, verdict
 
 
 def interpret_smart(data: Dict[str, Any]) -> CheckResult:

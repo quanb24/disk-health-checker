@@ -1,11 +1,11 @@
-# QA Checklist — v0.1.0
+# QA Checklist — v0.1.1
 
 Manual verification checklist. Test each item against the built `.app`.
 
 ## GUI — App Launch
 
 - [ ] App opens without crash
-- [ ] Window title shows "Disk Health Checker v0.1.0"
+- [ ] Window title shows "Disk Health Checker v0.1.1"
 - [ ] Dark theme renders (not white/unstyled)
 - [ ] Header bar shows app name and version
 
@@ -58,7 +58,7 @@ Manual verification checklist. Test each item against the built `.app`.
 
 ## CLI
 
-- [ ] `disk-health-checker --version` prints `disk-health-checker 0.1.0`
+- [ ] `disk-health-checker --version` prints `disk-health-checker 0.1.1`
 - [ ] `disk-health-checker --help` prints usage
 - [ ] `disk-health-checker smart --device /dev/disk0` runs (may need sudo)
 - [ ] `disk-health-checker --json smart --device /dev/disk0` outputs valid JSON

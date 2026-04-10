@@ -46,7 +46,7 @@ After the `.app` is built:
 
 ```bash
 # Clean any previous DMG
-rm -f "dist/DiskHealthChecker-0.1.0.dmg"
+rm -f "dist/DiskHealthChecker-0.1.1.dmg"
 
 # Create DMG with hdiutil (built into macOS, no extra tools)
 hdiutil create \
@@ -54,15 +54,15 @@ hdiutil create \
   -srcfolder "dist/Disk Health Checker.app" \
   -ov \
   -format UDZO \
-  "dist/DiskHealthChecker-0.1.0.dmg"
+  "dist/DiskHealthChecker-0.1.1.dmg"
 ```
 
-Output: `dist/DiskHealthChecker-0.1.0.dmg` (~40-60 MB)
+Output: `dist/DiskHealthChecker-0.1.1.dmg` (~40-60 MB)
 
 To test:
 
 ```bash
-open "dist/DiskHealthChecker-0.1.0.dmg"
+open "dist/DiskHealthChecker-0.1.1.dmg"
 # Drag "Disk Health Checker" to Applications (or run from the mounted volume)
 ```
 

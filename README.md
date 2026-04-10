@@ -12,7 +12,7 @@ Supports **ATA/SATA** and **NVMe** drives on **macOS** and **Linux**. Available 
 
 ## Download
 
-**macOS:** Download `DiskHealthChecker-0.1.0.dmg` from the [latest release](https://github.com/quanb24/disk-health-checker/releases). Open the DMG and drag to Applications.
+**macOS:** Download `DiskHealthChecker-0.1.1.dmg` from the [latest release](https://github.com/quanb24/disk-health-checker/releases). Open the DMG and drag to Applications.
 
 > **Note:** The app is not code-signed. On first launch, right-click the app and select Open, then click Open in the dialog.
 

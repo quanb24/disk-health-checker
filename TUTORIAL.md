@@ -61,7 +61,7 @@ This installs:
 disk-health-checker --version
 ```
 
-Expected output: `disk-health-checker 0.1.0`
+Expected output: `disk-health-checker 0.1.1`
 
 ```bash
 disk-health-checker --help
