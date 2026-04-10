@@ -122,7 +122,7 @@ if is_macos:
         strip=False,
         upx=False,
         console=False,          # No terminal window
-        target_arch=None,       # Build for current arch
+        target_arch=os.environ.get("PYINSTALLER_TARGET_ARCH", None),
     )
     coll = COLLECT(
         exe,
