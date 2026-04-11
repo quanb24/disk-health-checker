@@ -1,13 +1,23 @@
+"""SMART health assessment.
+
+Collects SMART data via smartctl, normalizes it into a SmartSnapshot,
+evaluates it through ATA or NVMe rules, and converts the VerdictResult
+into a CheckResult using the shared evaluation pipeline.
+"""
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
-
-from typing import Tuple
+from typing import Any, Dict, Tuple
 
 from ...models.config import SmartConfig
 from ...models.results import CheckResult, Severity
-from ...models.smart_types import DriveKind, FindingSeverity, SmartSnapshot, Verdict, VerdictResult
+from ...models.smart_types import (
+    DriveKind,
+    SmartSnapshot,
+    VerdictResult,
+)
+from ..evaluate import verdict_to_check_result
 from .collector import collect_smart
 from .errors import SmartctlError
 from .normalize import detect_drive_kind, parse_ata, parse_nvme
@@ -16,21 +26,11 @@ from .nvme import evaluate_nvme
 
 logger = logging.getLogger(__name__)
 
-# Map Verdict → legacy health_state labels used in details dict.
-_VERDICT_TO_HEALTH_STATE = {
-    Verdict.PASS: "HEALTHY",
-    Verdict.WARNING: "WARNING",
-    Verdict.FAIL: "FAILING",
-    Verdict.UNKNOWN: "UNKNOWN",
-}
-
-# Map Verdict → Severity for CheckResult.status.
-_VERDICT_TO_SEVERITY = {
-    Verdict.PASS: Severity.OK,
-    Verdict.WARNING: Severity.WARNING,
-    Verdict.FAIL: Severity.CRITICAL,
-    Verdict.UNKNOWN: Severity.UNKNOWN,
-}
+# Score weights for SMART findings — kept separate from the default weights
+# in evaluate.py because SMART has its own fine-grained deductions defined
+# in ata.py and nvme.py (baked into each VerdictResult.score).
+# The shared pipeline's compute_score is NOT used for SMART; instead the
+# evaluators compute their own scores directly.
 
 
 def collect_and_interpret(
@@ -57,7 +57,7 @@ def interpret_smart(data: Dict[str, Any]) -> CheckResult:
     """Parse and score SMART JSON into a CheckResult.
 
     Dispatches to ATA or NVMe pipeline based on device kind.
-    Preserves the details dict keys that existing callers depend on.
+    Uses the shared verdict_to_check_result for consistent output.
     """
     kind = detect_drive_kind(data)
 
@@ -65,17 +65,12 @@ def interpret_smart(data: Dict[str, Any]) -> CheckResult:
         snapshot = parse_nvme(data)
         vr = evaluate_nvme(snapshot)
     else:
-        # ATA, SCSI (best-effort via ATA parser), or UNKNOWN.
         snapshot = parse_ata(data)
         vr = evaluate_ata(snapshot)
 
-    health_state = _VERDICT_TO_HEALTH_STATE[vr.verdict]
-    severity = _VERDICT_TO_SEVERITY[vr.verdict]
-
-    # Build details dict — includes legacy keys for backwards compat
-    # and new structured fields for the banner formatter and JSON output.
-    details: Dict[str, Any] = {
-        # Identity (used by banner formatter).
+    # Build SMART-specific extra details (identity, legacy keys).
+    extra_details: Dict[str, Any] = {
+        # Identity
         "model_name": snapshot.model,
         "serial_number": snapshot.serial,
         "firmware_version": snapshot.firmware,
@@ -83,7 +78,7 @@ def interpret_smart(data: Dict[str, Any]) -> CheckResult:
         "device_kind": snapshot.device_kind.value,
         "is_ssd": snapshot.is_ssd,
         "rotation_rate_rpm": snapshot.rotation_rate_rpm,
-        # Legacy attribute keys.
+        # Legacy attribute keys (used by banner formatter)
         "smart_overall_passed": snapshot.overall_passed,
         "reallocated_sectors": snapshot.reallocated_sectors,
         "pending_sectors": snapshot.pending_sectors,
@@ -93,57 +88,38 @@ def interpret_smart(data: Dict[str, Any]) -> CheckResult:
         "temperature_c": snapshot.temperature_c,
         "wear_indicator": snapshot.percent_life_used,
         "supports_self_test": snapshot.supports_self_test,
-        # NVMe-specific (None for ATA, populated for NVMe).
+        # NVMe-specific
         "available_spare_percent": snapshot.available_spare_percent,
         "available_spare_threshold": snapshot.available_spare_threshold,
         "critical_warning_bits": snapshot.critical_warning_bits,
         "media_errors": snapshot.media_errors,
-        # New structured evaluation fields.
-        "health_state": health_state,
-        "health_score": vr.score,
+        # Legacy compat
+        "health_state": _verdict_to_health_state(vr),
         "health_explanation": vr.reasoning,
-        "verdict": vr.verdict.value,
-        "confidence": vr.confidence.value,
-        "findings": [
-            {
-                "code": f.code,
-                "severity": f.severity.value,
-                "message": f.message,
-                "evidence": f.evidence,
-            }
-            for f in vr.findings
-        ],
-        "evidence_missing": vr.evidence_missing,
     }
 
-    # Build summary line.
-    first_finding = vr.findings[0].message.split(".")[0] if vr.findings else vr.reasoning.split(".")[0]
-    summary = f"{health_state} (score {vr.score}/100). {first_finding}."
-
-    recommendations: list[str] = []
-    if severity == Severity.CRITICAL:
-        recommendations.append("Back up data immediately and replace the drive.")
-        recommendations.append("Do not use this drive as sole storage for important data.")
-    elif severity == Severity.WARNING:
-        recommendations.append("Keep backups current. This drive is usable but has warning signs.")
-        recommendations.append("Re-run this check in ~30 days to monitor for progression.")
-    elif severity == Severity.OK:
-        recommendations.append("No action needed. Keep regular backups as always.")
-    else:
-        recommendations.append("Could not determine drive health. See signals missing above.")
-
-    return CheckResult(
-        check_name="SMART",
-        status=severity,
-        summary=summary,
-        details=details,
-        recommendations=recommendations,
+    return verdict_to_check_result(
+        "SMART", vr,
+        extra_details=extra_details,
+        target_description="SMART diagnostics",
     )
 
 
-def run_smart_check(config: SmartConfig, *, transport: str | None = None) -> CheckResult:
-    """
-    Run SMART diagnostics for the given device using smartctl if available.
+def _verdict_to_health_state(vr: VerdictResult) -> str:
+    """Map verdict to legacy HEALTHY/WARNING/FAILING/UNKNOWN labels."""
+    from ...models.smart_types import Verdict
+    return {
+        Verdict.PASS: "HEALTHY",
+        Verdict.WARNING: "WARNING",
+        Verdict.FAIL: "FAILING",
+        Verdict.UNKNOWN: "UNKNOWN",
+    }.get(vr.verdict, "UNKNOWN")
+
+
+def run_smart_check(
+    config: SmartConfig, *, transport: str | None = None,
+) -> CheckResult:
+    """Run SMART diagnostics for the given device using smartctl.
 
     Args:
         config: SMART check configuration with device path.
@@ -165,7 +141,13 @@ def run_smart_check(config: SmartConfig, *, transport: str | None = None) -> Che
             check_name="SMART",
             status=Severity.UNKNOWN,
             summary=f"SMART check unavailable: {exc}",
-            details={"failure_reason": "smartctl_not_installed"},
+            details={
+                "failure_reason": "smartctl_not_installed",
+                "verdict": "UNKNOWN",
+                "confidence": "LOW",
+                "findings": [],
+                "evidence_missing": ["smartctl"],
+            },
             recommendations=[str(exc), "Ensure the device path is correct."],
         )
     except UsbBridgeBlocked as exc:
@@ -181,6 +163,10 @@ def run_smart_check(config: SmartConfig, *, transport: str | None = None) -> Che
             details={
                 "failure_reason": "usb_bridge_blocked",
                 "device_types_tried": exc.types_tried,
+                "verdict": "UNKNOWN",
+                "confidence": "LOW",
+                "findings": [],
+                "evidence_missing": ["smart_data"],
             },
             recommendations=[
                 "Connect the drive directly via SATA (not through USB) and re-scan.",
@@ -196,7 +182,13 @@ def run_smart_check(config: SmartConfig, *, transport: str | None = None) -> Che
             check_name="SMART",
             status=Severity.UNKNOWN,
             summary=f"SMART check unavailable: {exc}",
-            details={"failure_reason": "smart_not_supported"},
+            details={
+                "failure_reason": "smart_not_supported",
+                "verdict": "UNKNOWN",
+                "confidence": "LOW",
+                "findings": [],
+                "evidence_missing": ["smart_data"],
+            },
             recommendations=[
                 str(exc),
                 "Run as a privileged user if required by the OS.",
@@ -208,7 +200,13 @@ def run_smart_check(config: SmartConfig, *, transport: str | None = None) -> Che
             check_name="SMART",
             status=Severity.UNKNOWN,
             summary=f"SMART check unavailable: {exc}",
-            details={"failure_reason": "timeout"},
+            details={
+                "failure_reason": "timeout",
+                "verdict": "UNKNOWN",
+                "confidence": "LOW",
+                "findings": [],
+                "evidence_missing": ["smart_data"],
+            },
             recommendations=[
                 str(exc),
                 "The drive may be unresponsive. Try disconnecting and reconnecting.",
@@ -220,7 +218,13 @@ def run_smart_check(config: SmartConfig, *, transport: str | None = None) -> Che
             check_name="SMART",
             status=Severity.UNKNOWN,
             summary=f"SMART check unavailable: {exc}",
-            details={"failure_reason": "unknown"},
+            details={
+                "failure_reason": "unknown",
+                "verdict": "UNKNOWN",
+                "confidence": "LOW",
+                "findings": [],
+                "evidence_missing": ["smart_data"],
+            },
             recommendations=[
                 "Ensure the device path is correct.",
                 "Run as a privileged user if required by the OS.",
@@ -228,7 +232,3 @@ def run_smart_check(config: SmartConfig, *, transport: str | None = None) -> Che
         )
 
     return interpret_smart(result.data)
-
-
-
-

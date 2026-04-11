@@ -1,0 +1,23 @@
+All smartctl attempts against /dev/disk4 failed.
+The WD My Book USB-SATA bridge chip blocks SMART passthrough.
+
+$ smartctl -i -j /dev/disk4
+  -> exit 2: "Operation not supported by device"
+
+$ smartctl -i -j -d sat /dev/disk4
+  -> exit 1: "Not a device of type 'scsi'"
+  (macOS kernel rejects SAT passthrough entirely for this device)
+
+The -d sat failure with "Not a device of type 'scsi'" means macOS doesn't
+expose this USB device as a SCSI target, so none of the SAT/bridge modes
+can work. This is a kernel-level block, not a smartctl limitation.
+
+disk-health-checker tried these modes (from collector logs):
+  1. auto        -> Operation not supported by device
+  2. -d sat      -> Not a device of type 'scsi'
+  3. -d sat,12   -> (same)
+  4. -d sat,16   -> (same)
+  5. -d usbsunplus -> (same)
+  6. -d usbjmicron -> (same)
+
+Result: UsbBridgeBlocked — SMART is completely inaccessible.

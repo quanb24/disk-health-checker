@@ -1,0 +1,104 @@
+{
+  "target": "device=/dev/disk4",
+  "overall_status": "UNKNOWN",
+  "check_results": [
+    {
+      "check_name": "SMART",
+      "status": "UNKNOWN",
+      "summary": "UNKNOWN (score 100/100). Insufficient SMART data to determine drive health.",
+      "details": {
+        "verdict": "UNKNOWN",
+        "confidence": "LOW",
+        "health_score": 100,
+        "findings": [],
+        "evidence_missing": [
+          "smart_status.passed",
+          "pending_sectors",
+          "offline_uncorrectable",
+          "reallocated_sectors",
+          "temperature_c"
+        ],
+        "model_name": null,
+        "serial_number": null,
+        "firmware_version": null,
+        "capacity_bytes": null,
+        "device_kind": "ata",
+        "is_ssd": null,
+        "rotation_rate_rpm": null,
+        "smart_overall_passed": null,
+        "reallocated_sectors": null,
+        "pending_sectors": null,
+        "offline_uncorrectable": null,
+        "reported_uncorrect": null,
+        "power_on_hours": null,
+        "temperature_c": null,
+        "wear_indicator": null,
+        "supports_self_test": null,
+        "available_spare_percent": null,
+        "available_spare_threshold": null,
+        "critical_warning_bits": null,
+        "media_errors": null,
+        "health_state": "UNKNOWN",
+        "health_explanation": "Insufficient SMART data to determine drive health. Missing: smart_status.passed, pending_sectors, offline_uncorrectable, reallocated_sectors, temperature_c."
+      },
+      "recommendations": [
+        "Could not fully assess health (SMART diagnostics). See signals missing above."
+      ]
+    },
+    {
+      "check_name": "SMART Self-Test Capability",
+      "status": "UNKNOWN",
+      "summary": "Could not confirm SMART self-test support from drive data.",
+      "details": {
+        "supports_self_test": false,
+        "verdict": "UNKNOWN",
+        "confidence": "MEDIUM",
+        "health_score": 50,
+        "findings": [],
+        "evidence_missing": [
+          "self_test_support"
+        ]
+      },
+      "recommendations": [
+        "Attempt to run a long self-test with: smartctl -t long /dev/disk4",
+        "If the command fails, the enclosure or drive firmware may not support self-tests."
+      ]
+    },
+    {
+      "check_name": "Filesystem (macOS stub)",
+      "status": "UNKNOWN",
+      "summary": "Filesystem verification on macOS is not automated by this tool.",
+      "details": {
+        "verdict": "UNKNOWN",
+        "confidence": "LOW",
+        "health_score": 50,
+        "findings": [],
+        "evidence_missing": [
+          "filesystem_verification"
+        ]
+      },
+      "recommendations": [
+        "To verify a volume, run: diskutil verifyVolume /dev/diskXsY",
+        "For APFS containers, see: diskutil apfs list"
+      ]
+    }
+  ],
+  "started_at": "2026-04-11T00:22:27.221212+00:00",
+  "finished_at": "2026-04-11T00:22:27.243946+00:00",
+  "global_verdict": {
+    "health": "Unknown",
+    "urgency": "Monitor over time",
+    "recommended_usage": "Non-critical storage only",
+    "confidence": "LOW",
+    "composite_score": 80,
+    "reasoning": "Overall health: Unknown. SMART data could not be read. Drive health cannot be reliably determined without SMART diagnostics. Confidence is LOW. Missing signals: SMART:smart_status.passed, SMART:pending_sectors, SMART:offline_uncorrectable, SMART:reallocated_sectors, SMART:temperature_c.",
+    "check_verdicts": {
+      "SMART": "UNKNOWN",
+      "SMART Self-Test Capability": "UNKNOWN",
+      "Filesystem (macOS stub)": "UNKNOWN"
+    },
+    "key_findings": [],
+    "conflicts": [],
+    "all_findings_count": 0
+  }
+}

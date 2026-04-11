@@ -1,0 +1,29 @@
+{
+  "target": "mount=/Volumes/My Book",
+  "overall_status": "OK",
+  "check_results": [
+    {
+      "check_name": "Filesystem",
+      "status": "OK",
+      "summary": "PASS (score 100/100). No significant filesystem issues detected.",
+      "details": {
+        "verdict": "PASS",
+        "confidence": "HIGH",
+        "health_score": 100,
+        "findings": [],
+        "evidence_missing": [],
+        "mount_point": "/Volumes/My Book",
+        "filesystem_type": "unknown",
+        "total_bytes": 6001149345792,
+        "used_bytes": 94371840,
+        "free_bytes": 6001054973952,
+        "mode": "0o700"
+      },
+      "recommendations": [
+        "No action needed (/Volumes/My Book). Keep regular backups as always."
+      ]
+    }
+  ],
+  "started_at": "2026-04-11T00:22:26.070519+00:00",
+  "finished_at": "2026-04-11T00:22:26.377565+00:00"
+}

@@ -1,0 +1,56 @@
+2026-04-10 20:22:25,651 [INFO] disk_health_checker.checks.smart.collector: Retrying SMART with '-d sat' for /dev/disk4 (USB bridge fallback).
+2026-04-10 20:22:25,671 [INFO] disk_health_checker.checks.smart.collector: Retrying SMART with '-d sat,12' for /dev/disk4 (USB bridge fallback).
+2026-04-10 20:22:25,689 [INFO] disk_health_checker.checks.smart.collector: Retrying SMART with '-d sat,16' for /dev/disk4 (USB bridge fallback).
+2026-04-10 20:22:25,708 [INFO] disk_health_checker.checks.smart.collector: Retrying SMART with '-d usbsunplus' for /dev/disk4 (USB bridge fallback).
+2026-04-10 20:22:25,727 [INFO] disk_health_checker.checks.smart.collector: Retrying SMART with '-d usbjmicron' for /dev/disk4 (USB bridge fallback).
+{
+  "target": "device=/dev/disk4",
+  "overall_status": "UNKNOWN",
+  "check_results": [
+    {
+      "check_name": "SMART",
+      "status": "UNKNOWN",
+      "summary": "UNKNOWN (score 100/100). Insufficient SMART data to determine drive health.",
+      "details": {
+        "verdict": "UNKNOWN",
+        "confidence": "LOW",
+        "health_score": 100,
+        "findings": [],
+        "evidence_missing": [
+          "smart_status.passed",
+          "pending_sectors",
+          "offline_uncorrectable",
+          "reallocated_sectors",
+          "temperature_c"
+        ],
+        "model_name": null,
+        "serial_number": null,
+        "firmware_version": null,
+        "capacity_bytes": null,
+        "device_kind": "ata",
+        "is_ssd": null,
+        "rotation_rate_rpm": null,
+        "smart_overall_passed": null,
+        "reallocated_sectors": null,
+        "pending_sectors": null,
+        "offline_uncorrectable": null,
+        "reported_uncorrect": null,
+        "power_on_hours": null,
+        "temperature_c": null,
+        "wear_indicator": null,
+        "supports_self_test": null,
+        "available_spare_percent": null,
+        "available_spare_threshold": null,
+        "critical_warning_bits": null,
+        "media_errors": null,
+        "health_state": "UNKNOWN",
+        "health_explanation": "Insufficient SMART data to determine drive health. Missing: smart_status.passed, pending_sectors, offline_uncorrectable, reallocated_sectors, temperature_c."
+      },
+      "recommendations": [
+        "Could not fully assess health (SMART diagnostics). See signals missing above."
+      ]
+    }
+  ],
+  "started_at": "2026-04-11T00:22:25.627650+00:00",
+  "finished_at": "2026-04-11T00:22:25.746822+00:00"
+}

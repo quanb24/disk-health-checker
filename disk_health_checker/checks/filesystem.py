@@ -1,3 +1,9 @@
+"""Filesystem health check.
+
+Verifies a mounted filesystem is accessible and writable.
+Produces structured findings fed through the unified verdict pipeline.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -5,11 +11,13 @@ import os
 import shutil
 import stat
 import tempfile
-from typing import Dict, Any
+from typing import Any, Dict, List
 
 from ..models.config import FsConfig, GlobalConfig
-from ..models.results import CheckResult, Severity
+from ..models.results import CheckResult
+from ..models.smart_types import Confidence, Finding, FindingSeverity
 from ..utils.platform import get_platform_info, which
+from .evaluate import findings_to_verdict, verdict_to_check_result
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +33,8 @@ def _get_fs_type(path: str) -> str:
                         return parts[2]
         except OSError:
             pass
-    # Fallback: not always accurate but better than nothing
     try:
-        st = os.statvfs(path)
-        # On many systems, f_fsid or f_flag are not very helpful for type, so just return "unknown"
+        os.statvfs(path)
         return "unknown"
     except OSError:
         return "unknown"
@@ -49,87 +55,100 @@ def _run_fsck_if_requested(path: str, run_external_fsck: bool) -> Dict[str, Any]
         details["fsck"] = "fsck not found on PATH"
         return details
 
-    # Try non-destructive check (-n: no changes). We currently do not know
-    # the underlying device from the mount path, so this is a documented stub.
-    try:
-        # We already know fsck exists from the which() check above; calling it
-        # without a mapped device would be misleading, so we explain the skip.
-        details["fsck"] = "fsck invocation skipped (device mapping from mount point not implemented)"
-    except Exception as exc:  # pragma: no cover - defensive
-        details["fsck_error"] = str(exc)
+    details["fsck"] = "fsck invocation skipped (device mapping from mount point not implemented)"
     return details
 
 
 def run_filesystem_check(config: FsConfig, global_config: GlobalConfig) -> CheckResult:
     mount = config.mount_point
+    findings: List[Finding] = []
+    evidence_missing: List[str] = []
+    extra_details: Dict[str, Any] = {"mount_point": mount}
 
+    # ── Mount point existence ──
     if not os.path.exists(mount):
-        return CheckResult(
-            check_name="Filesystem",
-            status=Severity.CRITICAL,
-            summary=f"Mount point does not exist: {mount}",
-            details={},
-            recommendations=[f"Ensure the filesystem at {mount} is mounted and accessible."],
+        findings.append(Finding(
+            code="fs.mount_not_found",
+            severity=FindingSeverity.FAIL,
+            message=f"Mount point does not exist: {mount}",
+            evidence={"mount_point": mount},
+        ))
+        vr = findings_to_verdict(
+            findings,
+            evidence_missing=evidence_missing,
+            confidence=Confidence.HIGH,
+            check_category="filesystem",
+        )
+        return verdict_to_check_result(
+            "Filesystem", vr,
+            extra_details=extra_details,
+            target_description=mount,
         )
 
-    details: Dict[str, Any] = {}
-
+    # ── Filesystem type ──
     fs_type = _get_fs_type(mount)
-    details["filesystem_type"] = fs_type
+    extra_details["filesystem_type"] = fs_type
 
+    # ── Disk usage ──
     try:
         usage = shutil.disk_usage(mount)
-        details["total_bytes"] = usage.total
-        details["used_bytes"] = usage.used
-        details["free_bytes"] = usage.free
+        extra_details["total_bytes"] = usage.total
+        extra_details["used_bytes"] = usage.used
+        extra_details["free_bytes"] = usage.free
     except OSError as exc:
         logger.warning("Failed to get disk usage for %s: %s", mount, exc)
 
-    # Basic read/write sanity check if allowed
-    recommendations = []
-    sanity_ok = True
+    # ── Write sanity check ──
     if global_config.non_destructive:
-        # still safe to do a very small create/delete in a temp dir
         try:
-            with tempfile.NamedTemporaryFile(dir=mount, prefix=".dhc-fs-test-", delete=True) as tmp:
+            with tempfile.NamedTemporaryFile(
+                dir=mount, prefix=".dhc-fs-test-", delete=True
+            ) as tmp:
                 tmp.write(b"disk-health-checker fs test\n")
                 tmp.flush()
                 os.fsync(tmp.fileno())
         except Exception as exc:
-            sanity_ok = False
-            details["sanity_check_error"] = str(exc)
-            recommendations.append(
-                f"Failed to create a small file under {mount}; check permissions and mount options (e.g. read-only)."
-            )
+            findings.append(Finding(
+                code="fs.write_test_failed",
+                severity=FindingSeverity.FAIL,
+                message=f"Failed to create a small test file under {mount}.",
+                evidence={"error": str(exc), "mount_point": mount},
+            ))
     else:
-        # In non-destructive-disabled mode, the caller has opted into more
-        # intensive operations elsewhere; we keep this quick sanity check
-        # disabled to avoid surprising writes here.
-        details["sanity_check"] = "skipped because non-destructive safeguards are disabled for this run"
+        extra_details["sanity_check"] = (
+            "skipped because non-destructive safeguards are disabled"
+        )
 
-    # External fsck (non-destructive mode only, and optional)
-    details.update(_run_fsck_if_requested(mount, config.run_external_fsck))
+    # ── External fsck ──
+    fsck_details = _run_fsck_if_requested(mount, config.run_external_fsck)
+    if fsck_details.get("fsck"):
+        findings.append(Finding(
+            code="fs.fsck_skipped",
+            severity=FindingSeverity.INFO,
+            message=fsck_details["fsck"],
+            evidence=fsck_details,
+        ))
+    extra_details.update(fsck_details)
 
-    # Basic permission info
+    # ── Permissions ──
     try:
         st = os.stat(mount)
-        details["mode"] = oct(stat.S_IMODE(st.st_mode))
+        extra_details["mode"] = oct(stat.S_IMODE(st.st_mode))
     except OSError:
         pass
 
-    if not sanity_ok:
-        status = Severity.CRITICAL
-        summary = f"Filesystem at {mount} is accessible but basic write test failed."
-    else:
-        status = Severity.OK
-        summary = f"Filesystem at {mount} appears healthy for basic operations."
+    # ── Confidence ──
+    # We could actually run the check, so confidence is HIGH.
+    confidence = Confidence.HIGH
 
-    return CheckResult(
-        check_name="Filesystem",
-        status=status,
-        summary=summary,
-        details=details,
-        recommendations=recommendations,
+    vr = findings_to_verdict(
+        findings,
+        evidence_missing=evidence_missing,
+        confidence=confidence,
+        check_category="filesystem",
     )
-
-
+    return verdict_to_check_result(
+        "Filesystem", vr,
+        extra_details=extra_details,
+        target_description=mount,
+    )

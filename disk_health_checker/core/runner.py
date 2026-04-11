@@ -18,6 +18,7 @@ from ..checks.filesystem import run_filesystem_check
 from ..checks.surface import run_surface_scan
 from ..checks.stress import run_stress_test
 from ..checks.integrity import run_integrity_check
+from ..verdict import compute_global_verdict
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +29,6 @@ def aggregate_status(results: List[CheckResult]) -> Severity:
 
     Priority order (highest to lowest):
       CRITICAL > WARNING > UNKNOWN > OK
-
-    UNKNOWN should never downgrade a WARNING, and WARNING should never
-    downgrade a CRITICAL.
     """
     priority = {
         Severity.OK: 0,
@@ -47,7 +45,6 @@ def aggregate_status(results: List[CheckResult]) -> Severity:
             worst = r.status
             worst_score = score
             if worst is Severity.CRITICAL:
-                # Cannot get worse than CRITICAL, so we can stop early.
                 break
 
     return worst
@@ -73,7 +70,10 @@ def run_full_suite(
                 check_name="SMART",
                 status=Severity.UNKNOWN,
                 summary=f"SMART check failed: {exc}",
-                details={},
+                details={
+                    "verdict": "UNKNOWN", "confidence": "LOW",
+                    "findings": [], "evidence_missing": ["smart_data"],
+                },
             )
         )
 
@@ -88,7 +88,10 @@ def run_full_suite(
                 check_name="Filesystem",
                 status=Severity.UNKNOWN,
                 summary=f"Filesystem check failed: {exc}",
-                details={},
+                details={
+                    "verdict": "UNKNOWN", "confidence": "LOW",
+                    "findings": [], "evidence_missing": ["filesystem"],
+                },
             )
         )
 
@@ -103,7 +106,10 @@ def run_full_suite(
                 check_name="SurfaceScan",
                 status=Severity.UNKNOWN,
                 summary=f"Surface scan failed: {exc}",
-                details={},
+                details={
+                    "verdict": "UNKNOWN", "confidence": "LOW",
+                    "findings": [], "evidence_missing": ["surface_scan"],
+                },
             )
         )
 
@@ -118,7 +124,10 @@ def run_full_suite(
                 check_name="StressTest",
                 status=Severity.UNKNOWN,
                 summary=f"Stress test failed: {exc}",
-                details={},
+                details={
+                    "verdict": "UNKNOWN", "confidence": "LOW",
+                    "findings": [], "evidence_missing": ["stress_test"],
+                },
             )
         )
 
@@ -133,18 +142,22 @@ def run_full_suite(
                 check_name="Integrity",
                 status=Severity.UNKNOWN,
                 summary=f"Integrity check failed: {exc}",
-                details={},
+                details={
+                    "verdict": "UNKNOWN", "confidence": "LOW",
+                    "findings": [], "evidence_missing": ["integrity"],
+                },
             )
         )
 
     finished = datetime.now(timezone.utc)
     overall = aggregate_status(results)
+    gv = compute_global_verdict(results)
+
     return SuiteResult(
         target=f"device={device}, mount={mount_point}",
         overall_status=overall,
         check_results=results,
         started_at=started,
         finished_at=finished,
+        global_verdict=gv,
     )
-
-

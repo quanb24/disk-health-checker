@@ -1,0 +1,8 @@
+Detected disks:
+- /dev/disk0: 465.9 GB, internal, APPLE SSD AP0512Q, Apple Fabric, mounts: no mounted volumes
+- /dev/disk1: 500.0 MB, internal, APPLE SSD AP0512Q, Apple Fabric, mounts: no mounted volumes
+- /dev/disk2: 5.0 GB, internal, APPLE SSD AP0512Q, Apple Fabric, mounts: no mounted volumes
+- /dev/disk3: 460.4 GB, internal, APPLE SSD AP0512Q, Apple Fabric, mounts: no mounted volumes
+- /dev/disk4: 5.5 TB, external, EDAZ-11BMZB0, USB, mounts: /Volumes/My Book
+- /dev/disk5: 461.7 MB, external, Disk Image, Disk Image, mounts: no mounted volumes
+- /dev/disk6: 461.6 MB, external, Disk Image, Disk Image, mounts: no mounted volumes

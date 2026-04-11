@@ -196,17 +196,15 @@ def _format_hours(hours: int | None) -> str:
     return f"~{years:.1f} years ({hours:,} hours)"
 
 
-def _print_smart_banner(check) -> None:
-    """Print the new verdict-first banner for a SMART check result."""
+def _print_smart_identity(check) -> None:
+    """Print SMART-specific drive identity header."""
     d = check.details
 
-    # ---- Drive identity ----
     model = d.get("model_name") or "Unknown model"
     serial = d.get("serial_number") or ""
     firmware = d.get("firmware_version") or ""
     capacity = _format_capacity(d.get("capacity_bytes"))
 
-    # Determine drive interface from findings/device_kind or fall back.
     device_kind = d.get("device_kind", "")
     kind_label = device_kind.upper() if device_kind else ""
 
@@ -215,7 +213,6 @@ def _print_smart_banner(check) -> None:
     if firmware:
         identity_parts.append(f"Firmware: {firmware}")
     if serial:
-        # Truncate serial for privacy in shared terminals.
         display_serial = serial[:10] + "..." if len(serial) > 10 else serial
         identity_parts.append(f"Serial: {display_serial}")
     identity_parts.append(f"Capacity: {capacity}")
@@ -234,7 +231,73 @@ def _print_smart_banner(check) -> None:
 
     print()
 
-    # ---- Verdict ----
+
+def _print_findings_banner(check) -> None:
+    """Print the unified verdict/findings banner for any check result.
+
+    All checks now produce structured findings through the same pipeline.
+    This function handles SMART (with identity header), USB-blocked,
+    error states, and non-SMART checks uniformly.
+    """
+    d = check.details
+
+    # ── Special case: USB bridge blocked ──
+    if d.get("failure_reason") == "usb_bridge_blocked":
+        print("Verdict:   UNKNOWN")
+        print()
+        print("Reason:    USB enclosure is blocking SMART passthrough")
+        print()
+        print("  The USB-to-SATA bridge chip inside this external enclosure")
+        print("  is preventing SMART health data from reaching the host.")
+        print("  This does NOT mean the drive is failing — it means health")
+        print("  cannot be assessed through this connection.")
+        print()
+        types_tried = d.get("device_types_tried", [])
+        if types_tried:
+            print(f"  Modes tried: {', '.join(types_tried)}")
+            print()
+        if check.recommendations:
+            print("What you can do:")
+            for i, rec in enumerate(check.recommendations, 1):
+                print(f"  {i}. {rec}")
+        return
+
+    # ── Special case: SMART error (not installed, timeout, etc.) ──
+    if d.get("failure_reason") and "verdict" not in d:
+        reason = d.get("failure_reason", "unknown")
+        reason_labels = {
+            "smartctl_not_installed": "smartctl is not installed",
+            "smart_not_supported": "SMART not supported on this device",
+            "timeout": "smartctl timed out waiting for the drive",
+            "unknown": "SMART check failed",
+        }
+        label = reason_labels.get(reason, "SMART check failed")
+        print("Verdict:   UNKNOWN")
+        print()
+        print(f"Reason:    {label}")
+        print()
+        if check.summary:
+            print(f"  {check.summary}")
+            print()
+        if check.recommendations:
+            print("Next steps:")
+            for i, rec in enumerate(check.recommendations, 1):
+                print(f"  {i}. {rec}")
+        return
+
+    # ── SMART identity header (only for SMART checks) ──
+    is_smart = check.check_name == "SMART"
+    if is_smart and d.get("model_name"):
+        _print_smart_identity(check)
+    elif not is_smart:
+        print(f"Check:     {check.check_name}")
+        # Show target if available
+        target = d.get("mount_point") or d.get("device") or ""
+        if target:
+            print(f"Target:    {target}")
+        print()
+
+    # ── Verdict line ──
     verdict = d.get("verdict", check.status.value)
     confidence = d.get("confidence", "")
     score = d.get("health_score")
@@ -242,7 +305,7 @@ def _print_smart_banner(check) -> None:
     conf_str = f"confidence {confidence}" if confidence else ""
     print(f"Verdict:   {verdict}  ({score_str}{conf_str})")
 
-    # ---- Findings ----
+    # ── Findings ──
     findings = d.get("findings", [])
     if findings:
         print()
@@ -252,17 +315,16 @@ def _print_smart_banner(check) -> None:
             marker = {"FAIL": "!!", "WARN": "!", "INFO": " "}.get(sev, " ")
             print(f"  {marker} {f.get('message', '')}")
 
-    # ---- Evidence gaps ----
+    # ── Evidence gaps ──
     missing = d.get("evidence_missing", [])
     if missing:
         print()
         print(f"Signals missing: {', '.join(missing)}")
     elif findings is not None:
-        # Only show "none" when we actually checked.
         print()
         print("Signals missing: none")
 
-    # ---- Recommendations ----
+    # ── Recommendations ──
     if check.recommendations:
         print()
         print("Next steps:")
@@ -270,99 +332,63 @@ def _print_smart_banner(check) -> None:
             print(f"  {i}. {rec}")
 
 
-def _print_usb_blocked_banner(check) -> None:
-    """Print a clear explanation when a USB enclosure blocks SMART."""
-    print("Verdict:   UNKNOWN")
+def _print_global_verdict(gv) -> None:
+    """Print the global verdict banner — the final answer to 'Is this drive safe?'"""
+    print("=" * 60)
     print()
-    print("Reason:    USB enclosure is blocking SMART passthrough")
+    print(f"  DRIVE ASSESSMENT:  {gv.health.value.upper()}")
     print()
-    print("  The USB-to-SATA bridge chip inside this external enclosure")
-    print("  is preventing SMART health data from reaching the host.")
-    print("  This does NOT mean the drive is failing — it means health")
-    print("  cannot be assessed through this connection.")
+    print(f"  Urgency:     {gv.urgency.value}")
+    print(f"  Usage:       {gv.usage.value}")
+    print(f"  Confidence:  {gv.confidence.value}")
+    print(f"  Score:       {gv.composite_score}/100")
     print()
-    types_tried = check.details.get("device_types_tried", [])
-    if types_tried:
-        print(f"  Modes tried: {', '.join(types_tried)}")
+
+    if gv.key_findings:
+        print("  Key findings:")
+        for f in gv.key_findings:
+            sev = f.get("severity", "")
+            marker = {"FAIL": "!!", "WARN": "!", "INFO": " "}.get(sev, " ")
+            check = f.get("check", "")
+            msg = f.get("message", "")
+            print(f"    {marker} [{check}] {msg}")
         print()
-    if check.recommendations:
-        print("What you can do:")
-        for i, rec in enumerate(check.recommendations, 1):
-            print(f"  {i}. {rec}")
 
-
-def _print_error_banner(check) -> None:
-    """Print a clean banner for SMART errors (not installed, timeout, etc.)."""
-    reason = check.details.get("failure_reason", "unknown")
-    reason_labels = {
-        "smartctl_not_installed": "smartctl is not installed",
-        "smart_not_supported": "SMART not supported on this device",
-        "timeout": "smartctl timed out waiting for the drive",
-        "unknown": "SMART check failed",
-    }
-    label = reason_labels.get(reason, "SMART check failed")
-
-    print("Verdict:   UNKNOWN")
-    print()
-    print(f"Reason:    {label}")
-    print()
-    if check.summary:
-        print(f"  {check.summary}")
+    if gv.conflicts:
+        print("  Conflicts detected:")
+        for c in gv.conflicts:
+            print(f"    - {c.explanation}")
         print()
-    if check.recommendations:
-        print("Next steps:")
-        for i, rec in enumerate(check.recommendations, 1):
-            print(f"  {i}. {rec}")
+
+    print(f"  {gv.reasoning}")
+    print()
+    print("=" * 60)
 
 
 def _print_human_suite(result: SuiteResult) -> None:
-    """Print human-readable output.
+    """Print human-readable output for any single or multi-check result.
 
-    For SMART-based checks that carry the new verdict/findings structure,
-    use the banner format.  For legacy checks (filesystem, surface, etc.)
-    and multi-check suites, fall back to the structured report.
+    All checks use the unified findings banner.  Multi-check suites
+    additionally show the global verdict.
     """
-    # Single-check SMART result with verdict data -> banner format.
-    if len(result.check_results) == 1:
-        single = result.check_results[0]
-        if "verdict" in single.details:
-            _print_smart_banner(single)
-            return
-        if single.details.get("failure_reason") == "usb_bridge_blocked":
-            _print_usb_blocked_banner(single)
-            return
-        if "failure_reason" in single.details:
-            _print_error_banner(single)
-            return
+    # Single-check result — print directly without suite wrapper.
+    if len(result.check_results) == 1 and result.global_verdict is None:
+        _print_findings_banner(result.check_results[0])
+        return
 
-    # Multi-check suite (e.g. `full` command) or legacy checks.
+    # Multi-check suite — show per-check details, then global verdict.
     print(f"Disk Health Check — {result.target}")
     print(f"Overall: {result.overall_status.value}")
     print()
 
     for check in result.check_results:
-        if "verdict" in check.details:
-            # SMART check within a suite — use banner.
-            _print_smart_banner(check)
-            print()
-            print("-" * 60)
-            print()
-        elif check.details.get("failure_reason") == "usb_bridge_blocked":
-            _print_usb_blocked_banner(check)
-            print()
-        elif "failure_reason" in check.details:
-            _print_error_banner(check)
-            print()
-        else:
-            # Legacy check — simple format.
-            print(f"=== {check.check_name} ===")
-            print(f"Status: {check.status.value}")
-            print(f"Summary: {check.summary}")
-            if check.recommendations:
-                print("Recommendations:")
-                for rec in check.recommendations:
-                    print(f"  - {rec}")
-            print()
+        _print_findings_banner(check)
+        print()
+        print("-" * 60)
+        print()
+
+    if result.global_verdict is not None:
+        _print_global_verdict(result.global_verdict)
 
 
 def _exit_code_from_severity(sev: Severity) -> int:
@@ -394,9 +420,9 @@ def _resolve_device(
     device = getattr(args, "device", None)
     if device:
         # When --device is given directly we don't know the transport.
-        # Try a quick lookup on macOS so USB fallback still works.
+        # Try a quick lookup so USB fallback still works.
         transport = None
-        if info.is_macos:
+        if info.is_macos or info.is_linux:
             for d in list_disks():
                 if d.device_node == device:
                     transport = d.protocol
@@ -411,8 +437,14 @@ def _resolve_device(
         )
         return None
 
-    if info.is_macos:
+    if info.is_macos or info.is_linux:
         disks = list_disks()
+        if not disks:
+            print(
+                "No disks detected automatically.\n"
+                "You can specify a device manually with --device /dev/sdX"
+            )
+            return None
         selected = select_disk_interactively(disks)
         if selected:
             return selected.device_node, selected.protocol
@@ -443,7 +475,12 @@ def main(argv: List[str] | None = None) -> int:
     if args.command == "detect":
         disks = list_disks()
         if not disks:
-            print("No disks detected automatically. On macOS, 'diskutil list -plist' must be available.")
+            if info.is_macos:
+                print("No disks detected. Ensure 'diskutil' is available.")
+            elif info.is_linux:
+                print("No disks detected. Ensure 'lsblk' is installed (usually part of util-linux).")
+            else:
+                print("Automatic disk detection is not supported on this platform.")
             return 1
         print("Detected disks:")
         for d in disks:

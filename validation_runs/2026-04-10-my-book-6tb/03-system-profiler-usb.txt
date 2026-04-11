@@ -1,0 +1,26 @@
+$ system_profiler SPUSBDataType | grep -A 20 "EDAZ"
+
+            EDAZ-11BMZB0:
+              Capacity: 6 TB (6,001,175,126,016 bytes)
+              Removable Media: No
+              BSD Name: disk4
+              Logical Unit: 0
+              Partition Map Type: GPT (GUID Partition Table)
+              S.M.A.R.T. status: Verified
+              USB Interface: 0
+              Volumes:
+                My Book:
+                  Capacity: 6 TB (6,001,172,414,464 bytes)
+                  Free: 6 TB (6,001,054,973,952 bytes)
+                  Writable: Yes
+                  File System: ExFAT
+                  BSD Name: disk4s1
+                  Mount Point: /Volumes/My Book
+                  Content: Microsoft Basic Data
+                  Volume UUID: 6F4E3B68-B243-3FB0-B4AE-FA91FBEC7C43
+
+NOTE: system_profiler reports "S.M.A.R.T. status: Verified" but this is
+misleading. diskutil reports "SMART Status: Not Supported" and smartctl
+cannot open the device. The system_profiler value likely reflects the
+enclosure's firmware reporting healthy to the USB layer, NOT actual SMART
+data from the drive platters. This is a known macOS discrepancy.

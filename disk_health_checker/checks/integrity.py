@@ -1,3 +1,12 @@
+"""Data integrity verification.
+
+Writes known patterns and reads them back to verify the storage medium
+correctly stores and retrieves data.  Optionally verifies files against
+a checksum manifest.
+
+Produces structured findings fed through the unified verdict pipeline.
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -5,10 +14,12 @@ import json
 import logging
 import os
 import tempfile
-from typing import Dict, Any, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 from ..models.config import IntegrityConfig, GlobalConfig
-from ..models.results import CheckResult, Severity
+from ..models.results import CheckResult
+from ..models.smart_types import Confidence, Finding, FindingSeverity
+from .evaluate import findings_to_verdict, verdict_to_check_result
 
 logger = logging.getLogger(__name__)
 
@@ -29,14 +40,14 @@ def _hash_file(path: str, algorithm: str, max_bytes: int) -> Tuple[str, int]:
 
 
 def _temp_pattern_integrity_check(config: IntegrityConfig) -> Dict[str, Any]:
-    """
-    Write a small temporary file with known content and verify it can be read back correctly.
-    """
+    """Write known patterns and verify readback correctness."""
     patterns = [b"\x00" * 4096, b"\xff" * 4096, os.urandom(4096)]
     mismatches = 0
     total_tests = 0
 
-    with tempfile.TemporaryDirectory(dir=config.mount_point, prefix=".dhc-int-") as tmpdir:
+    with tempfile.TemporaryDirectory(
+        dir=config.mount_point, prefix=".dhc-int-"
+    ) as tmpdir:
         for idx, pattern in enumerate(patterns):
             total_tests += 1
             path = os.path.join(tmpdir, f"pattern-{idx}")
@@ -57,17 +68,7 @@ def _temp_pattern_integrity_check(config: IntegrityConfig) -> Dict[str, Any]:
 
 
 def _manifest_integrity_check(config: IntegrityConfig) -> Dict[str, Any]:
-    """
-    Verify existing files match a given manifest of checksums.
-    Manifest format (JSON):
-    {
-      "algorithm": "sha256",
-      "files": {
-        "relative/path": "hex-digest",
-        ...
-      }
-    }
-    """
+    """Verify files match a JSON checksum manifest."""
     if not config.manifest_path or not os.path.isfile(config.manifest_path):
         return {"manifest_error": "manifest file not provided or not found"}
 
@@ -104,59 +105,77 @@ def _manifest_integrity_check(config: IntegrityConfig) -> Dict[str, Any]:
     }
 
 
-def run_integrity_check(config: IntegrityConfig, global_config: GlobalConfig) -> CheckResult:
+def run_integrity_check(
+    config: IntegrityConfig, global_config: GlobalConfig,
+) -> CheckResult:
     mount = config.mount_point
+    findings: List[Finding] = []
+    extra_details: Dict[str, Any] = {"mount_point": mount}
 
+    # ── Target existence ──
     if not os.path.isdir(mount):
-        return CheckResult(
-            check_name="Integrity",
-            status=Severity.CRITICAL,
-            summary=f"Integrity target is not a directory: {mount}",
-            details={},
-            recommendations=["Provide a valid mount point or directory for integrity checks."],
+        findings.append(Finding(
+            code="integrity.target_not_found",
+            severity=FindingSeverity.FAIL,
+            message=f"Integrity target is not a directory: {mount}",
+            evidence={"mount_point": mount},
+        ))
+        vr = findings_to_verdict(
+            findings, confidence=Confidence.HIGH, check_category="integrity",
+        )
+        return verdict_to_check_result(
+            "Integrity", vr,
+            extra_details=extra_details,
+            target_description=mount,
         )
 
-    details: Dict[str, Any] = {}
+    # ── Pattern integrity ──
+    pattern_results = _temp_pattern_integrity_check(config)
+    extra_details.update(pattern_results)
 
-    # Always run temp pattern checks
-    details.update(_temp_pattern_integrity_check(config))
-
-    # Optionally run manifest-based checks
-    if config.manifest_path:
-        details.update(_manifest_integrity_check(config))
-
-    mismatches = details.get("pattern_mismatches", 0)
-    manifest_mismatch_count = len(details.get("manifest_mismatched_files", []))
-    manifest_missing_count = len(details.get("manifest_missing_files", []))
-
-    status = Severity.OK
-    recommendations = []
-    summary_parts = ["Temporary pattern integrity checks completed."]
-
+    mismatches = pattern_results.get("pattern_mismatches", 0)
     if mismatches > 0:
-        status = Severity.CRITICAL
-        summary_parts.append(f"{mismatches} pattern mismatches detected.")
-        recommendations.append("Investigate possible hardware issues; consider replacing the drive.")
+        findings.append(Finding(
+            code="integrity.pattern_mismatch",
+            severity=FindingSeverity.FAIL,
+            message=f"{mismatches} pattern mismatch(es) detected — data written does not match data read back.",
+            evidence={
+                "pattern_tests": pattern_results["pattern_tests"],
+                "pattern_mismatches": mismatches,
+            },
+        ))
 
-    if manifest_mismatch_count > 0 or manifest_missing_count > 0:
-        if status != Severity.CRITICAL:
-            status = Severity.WARNING
-        summary_parts.append(
-            f"Manifest integrity issues: {manifest_mismatch_count} mismatches, {manifest_missing_count} missing files."
-        )
-        recommendations.append(
-            "Re-verify data source and restore affected files from a known-good backup."
-        )
+    # ── Manifest integrity ──
+    if config.manifest_path:
+        manifest_results = _manifest_integrity_check(config)
+        extra_details.update(manifest_results)
 
-    if status == Severity.OK:
-        summary_parts.append("No integrity issues detected.")
+        manifest_mismatches = manifest_results.get("manifest_mismatched_files", [])
+        manifest_missing = manifest_results.get("manifest_missing_files", [])
 
-    return CheckResult(
-        check_name="Integrity",
-        status=status,
-        summary=" ".join(summary_parts),
-        details=details,
-        recommendations=recommendations,
+        if manifest_mismatches:
+            findings.append(Finding(
+                code="integrity.manifest_mismatch",
+                severity=FindingSeverity.WARN,
+                message=f"{len(manifest_mismatches)} file(s) do not match their expected checksums.",
+                evidence={"mismatched_files": manifest_mismatches},
+            ))
+
+        if manifest_missing:
+            findings.append(Finding(
+                code="integrity.manifest_missing_files",
+                severity=FindingSeverity.WARN,
+                message=f"{len(manifest_missing)} file(s) listed in manifest are missing.",
+                evidence={"missing_files": manifest_missing},
+            ))
+
+    confidence = Confidence.HIGH
+
+    vr = findings_to_verdict(
+        findings, confidence=confidence, check_category="integrity",
     )
-
-
+    return verdict_to_check_result(
+        "Integrity", vr,
+        extra_details=extra_details,
+        target_description=mount,
+    )

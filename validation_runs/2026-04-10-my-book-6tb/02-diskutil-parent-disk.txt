@@ -1,0 +1,30 @@
+$ diskutil info /dev/disk4
+
+   Device Identifier:         disk4
+   Device Node:               /dev/disk4
+   Whole:                     Yes
+   Part of Whole:             disk4
+   Device / Media Name:       EDAZ-11BMZB0
+
+   Volume Name:               Not applicable (no file system)
+   Mounted:                   Not applicable (no file system)
+   File System:               None
+
+   Content (IOContent):       GUID_partition_scheme
+   OS Can Be Installed:       No
+   Media Type:                Generic
+   Protocol:                  USB
+   SMART Status:              Not Supported
+
+   Disk Size:                 6.0 TB (6001175126016 Bytes) (exactly 11721045168 512-Byte-Units)
+   Device Block Size:         512 Bytes
+
+   Media OS Use Only:         No
+   Media Read-Only:           No
+   Volume Read-Only:          Not applicable (no file system)
+
+   Device Location:           External
+   Removable Media:           Fixed
+
+   Solid State:               Info not available
+   Virtual:                   No

@@ -1,33 +1,47 @@
+"""Read-only surface scan.
+
+Reads blocks from a device (sampled in quick mode, sequential in full mode)
+and reports read errors and slow blocks as structured findings.
+"""
+
 from __future__ import annotations
 
 import logging
 import os
 import time
-from typing import Dict, Any
+from typing import Any, Dict, List
 
 from ..models.config import SurfaceScanConfig, GlobalConfig
-from ..models.results import CheckResult, Severity
+from ..models.results import CheckResult
+from ..models.smart_types import Confidence, Finding, FindingSeverity
 from ..utils.io import safe_open_readonly
 from ..utils.progress import SimpleProgress
+from .evaluate import findings_to_verdict, verdict_to_check_result
 
 logger = logging.getLogger(__name__)
 
 
 def run_surface_scan(config: SurfaceScanConfig, global_config: GlobalConfig) -> CheckResult:
-    """
-    Perform a simple read-only surface scan.
-
-    In quick mode, we sample every Nth block. In full mode, we read sequentially.
-    """
     device = config.device
+    findings: List[Finding] = []
+    evidence_missing: List[str] = []
+    extra_details: Dict[str, Any] = {"device": device, "quick_mode": config.quick}
 
+    # ── Device existence ──
     if not os.path.exists(device):
-        return CheckResult(
-            check_name="SurfaceScan",
-            status=Severity.CRITICAL,
-            summary=f"Device does not exist: {device}",
-            details={},
-            recommendations=[f"Ensure the device path {device} is correct and accessible."],
+        findings.append(Finding(
+            code="surface.device_not_found",
+            severity=FindingSeverity.FAIL,
+            message=f"Device does not exist: {device}",
+            evidence={"device": device},
+        ))
+        vr = findings_to_verdict(
+            findings, confidence=Confidence.HIGH, check_category="surface scan",
+        )
+        return verdict_to_check_result(
+            "SurfaceScan", vr,
+            extra_details=extra_details,
+            target_description=device,
         )
 
     block_size = max(config.block_size, 4096)
@@ -37,33 +51,31 @@ def run_surface_scan(config: SurfaceScanConfig, global_config: GlobalConfig) -> 
     try:
         total_bytes = os.path.getsize(device)
     except OSError:
-        # For raw block devices, getsize may fail; that's acceptable.
         pass
 
     total_blocks = None
     total_samples = None
     if total_bytes is not None:
         total_blocks = max(total_bytes // block_size, 1)
-        if config.quick:
-            # In quick mode we only read a subset of blocks; progress should
-            # reflect the number of samples rather than total blocks.
-            total_samples = max(total_blocks // sample_rate, 1)
-        else:
-            total_samples = total_blocks
+        total_samples = (
+            max(total_blocks // sample_rate, 1) if config.quick else total_blocks
+        )
 
-    if global_config.json_output:
-        progress = None
-    else:
+    progress = None
+    if not global_config.json_output:
         progress = SimpleProgress(total=total_samples, prefix="Surface scan: ")
 
     blocks_read = 0
     errors = 0
     slow_blocks = 0
-    latencies = []
     max_latency = 0.0
 
     start_time = time.time()
-    deadline = start_time + config.max_duration_seconds if config.max_duration_seconds else None
+    deadline = (
+        start_time + config.max_duration_seconds
+        if config.max_duration_seconds
+        else None
+    )
 
     try:
         with safe_open_readonly(device) as f:
@@ -73,7 +85,6 @@ def run_surface_scan(config: SurfaceScanConfig, global_config: GlobalConfig) -> 
                     break
 
                 try:
-                    offset = None
                     if config.quick and total_blocks is not None:
                         offset = blocks_read * block_size * sample_rate
                         if offset >= total_bytes:
@@ -86,13 +97,15 @@ def run_surface_scan(config: SurfaceScanConfig, global_config: GlobalConfig) -> 
                     if not data:
                         break
                     latency = t1 - t0
-                    latencies.append(latency)
-                    if latency > 0.1:  # 100ms threshold for "slow"
+                    if latency > 0.1:
                         slow_blocks += 1
                     if latency > max_latency:
                         max_latency = latency
                 except OSError as exc:
-                    logger.warning("Read error during surface scan at block %d: %s", blocks_read, exc)
+                    logger.warning(
+                        "Read error during surface scan at block %d: %s",
+                        blocks_read, exc,
+                    )
                     errors += 1
 
                 blocks_read += 1
@@ -101,14 +114,19 @@ def run_surface_scan(config: SurfaceScanConfig, global_config: GlobalConfig) -> 
 
     except OSError as exc:
         logger.warning("Failed to open device %s for surface scan: %s", device, exc)
-        return CheckResult(
-            check_name="SurfaceScan",
-            status=Severity.UNKNOWN,
-            summary=f"Surface scan unavailable: {exc}",
-            details={},
-            recommendations=[
-                "Run as a privileged user and ensure the device supports raw reads.",
-            ],
+        findings.append(Finding(
+            code="surface.access_denied",
+            severity=FindingSeverity.FAIL,
+            message=f"Cannot open device for reading: {exc}",
+            evidence={"device": device, "error": str(exc)},
+        ))
+        vr = findings_to_verdict(
+            findings, confidence=Confidence.LOW, check_category="surface scan",
+        )
+        return verdict_to_check_result(
+            "SurfaceScan", vr,
+            extra_details=extra_details,
+            target_description=device,
         )
     finally:
         if progress:
@@ -116,40 +134,45 @@ def run_surface_scan(config: SurfaceScanConfig, global_config: GlobalConfig) -> 
 
     elapsed = time.time() - start_time
 
-    details: Dict[str, Any] = {
-        "device": device,
+    extra_details.update({
         "blocks_read": blocks_read,
         "errors": errors,
         "slow_blocks": slow_blocks,
         "elapsed_seconds": elapsed,
         "block_size": block_size,
-        "quick_mode": config.quick,
         "max_latency_seconds": max_latency,
-    }
+    })
 
-    status = Severity.OK
-    recommendations = []
-    summary_parts = []
-
+    # ── Build findings from scan results ──
     if errors > 0:
-        status = Severity.CRITICAL
-        summary_parts.append(f"{errors} read errors encountered during surface scan")
-        recommendations.append("Back up data and consider replacing the drive.")
+        findings.append(Finding(
+            code="surface.read_errors",
+            severity=FindingSeverity.FAIL,
+            message=f"{errors} read error(s) encountered during surface scan.",
+            evidence={"error_count": errors, "blocks_read": blocks_read},
+        ))
 
-    if slow_blocks > 0 and status != Severity.CRITICAL:
-        status = Severity.WARNING
-        summary_parts.append(f"{slow_blocks} slow blocks observed (>100ms read latency)")
-        recommendations.append("Monitor performance; slow regions may indicate early degradation.")
+    if slow_blocks > 0:
+        findings.append(Finding(
+            code="surface.slow_blocks",
+            severity=FindingSeverity.WARN,
+            message=f"{slow_blocks} slow block(s) observed (>100ms read latency).",
+            evidence={
+                "slow_block_count": slow_blocks,
+                "max_latency_seconds": max_latency,
+            },
+        ))
 
-    if not summary_parts:
-        summary_parts.append("No errors detected during sampled surface scan.")
+    confidence = Confidence.HIGH if blocks_read > 0 else Confidence.LOW
 
-    return CheckResult(
-        check_name="SurfaceScan",
-        status=status,
-        summary="; ".join(summary_parts),
-        details=details,
-        recommendations=recommendations,
+    vr = findings_to_verdict(
+        findings,
+        evidence_missing=evidence_missing,
+        confidence=confidence,
+        check_category="surface scan",
     )
-
-
+    return verdict_to_check_result(
+        "SurfaceScan", vr,
+        extra_details=extra_details,
+        target_description=device,
+    )

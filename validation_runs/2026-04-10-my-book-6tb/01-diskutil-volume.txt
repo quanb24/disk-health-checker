@@ -1,0 +1,40 @@
+$ diskutil info "/Volumes/My Book"
+
+   Device Identifier:         disk4s1
+   Device Node:               /dev/disk4s1
+   Whole:                     No
+   Part of Whole:             disk4
+
+   Volume Name:               My Book
+   Mounted:                   Yes
+   Mount Point:               /Volumes/My Book
+
+   Partition Type:            Microsoft Basic Data
+   File System Personality:   ExFAT
+   Type (Bundle):             exfat
+   Name (User Visible):       ExFAT
+
+   OS Can Be Installed:       No
+   Media Type:                Generic
+   Protocol:                  USB
+   SMART Status:              Not Supported
+   Volume UUID:               6F4E3B68-B243-3FB0-B4AE-FA91FBEC7C43
+   Disk / Partition UUID:     543E6651-806F-40CD-A454-E60D9C087D38
+   Partition Offset:          1048576 Bytes (2048 512-Byte-Device-Blocks)
+
+   Disk Size:                 6.0 TB (6001172414464 Bytes) (exactly 11721039872 512-Byte-Units)
+   Device Block Size:         512 Bytes
+
+   Volume Total Space:        6.0 TB (6001149345792 Bytes) (exactly 11720994816 512-Byte-Units)
+   Volume Used Space:         94.4 MB (94371840 Bytes) (exactly 184320 512-Byte-Units) (0.0%)
+   Volume Free Space:         6.0 TB (6001054973952 Bytes) (exactly 11720810496 512-Byte-Units) (100.0%)
+   Allocation Block Size:     512 Bytes
+
+   Media OS Use Only:         No
+   Media Read-Only:           No
+   Volume Read-Only:          No
+
+   Device Location:           External
+   Removable Media:           Fixed
+
+   Solid State:               Info not available

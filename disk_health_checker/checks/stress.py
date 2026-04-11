@@ -1,3 +1,9 @@
+"""Read/write stress test.
+
+Writes random data across multiple threads to exercise the drive under load.
+Produces structured findings fed through the unified verdict pipeline.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -5,21 +11,27 @@ import os
 import random
 import threading
 import time
-from typing import Dict, Any
+from typing import Any, Dict, List
 
 from ..models.config import StressConfig, GlobalConfig
-from ..models.results import CheckResult, Severity
+from ..models.results import CheckResult
+from ..models.smart_types import Confidence, Finding, FindingSeverity
+from .evaluate import findings_to_verdict, verdict_to_check_result
 
 logger = logging.getLogger(__name__)
 
 
-def _worker(path: str, stop_time: float, max_file_size: int, stats: Dict[str, Any]) -> None:
+def _worker(
+    path: str, stop_time: float, max_file_size: int, stats: Dict[str, Any],
+) -> None:
     rng = random.Random()
     thread_id = threading.get_ident()
     buf = bytearray(1024 * 1024)  # 1 MiB buffer
 
     while time.time() < stop_time:
-        filename = os.path.join(path, f".dhc-stress-{thread_id}-{int(time.time() * 1000)}")
+        filename = os.path.join(
+            path, f".dhc-stress-{thread_id}-{int(time.time() * 1000)}"
+        )
         size = rng.randint(1, max_file_size)
         written = 0
         try:
@@ -28,7 +40,7 @@ def _worker(path: str, stop_time: float, max_file_size: int, stats: Dict[str, An
                 remaining = size
                 while remaining > 0:
                     chunk = min(len(buf), remaining)
-                    rng.random()  # mix RNG state lightly
+                    rng.random()
                     f.write(buf[:chunk])
                     remaining -= chunk
                     written += chunk
@@ -52,16 +64,31 @@ def _worker(path: str, stop_time: float, max_file_size: int, stats: Dict[str, An
 
 def run_stress_test(config: StressConfig, global_config: GlobalConfig) -> CheckResult:
     mount = config.mount_point
+    findings: List[Finding] = []
+    extra_details: Dict[str, Any] = {
+        "mount_point": mount,
+        "threads": config.threads,
+        "duration_seconds": config.duration_seconds,
+    }
 
+    # ── Target existence ──
     if not os.path.isdir(mount):
-        return CheckResult(
-            check_name="StressTest",
-            status=Severity.CRITICAL,
-            summary=f"Stress target is not a directory: {mount}",
-            details={},
-            recommendations=[f"Provide a valid mount point or directory for stress testing."],
+        findings.append(Finding(
+            code="stress.target_not_found",
+            severity=FindingSeverity.FAIL,
+            message=f"Stress target is not a directory: {mount}",
+            evidence={"mount_point": mount},
+        ))
+        vr = findings_to_verdict(
+            findings, confidence=Confidence.HIGH, check_category="stress test",
+        )
+        return verdict_to_check_result(
+            "StressTest", vr,
+            extra_details=extra_details,
+            target_description=mount,
         )
 
+    # ── Space calculation ──
     try:
         usage = os.statvfs(mount)
         free_bytes = usage.f_bavail * usage.f_frsize
@@ -69,20 +96,32 @@ def run_stress_test(config: StressConfig, global_config: GlobalConfig) -> CheckR
         free_bytes = None
 
     if free_bytes is not None:
-        max_total = int(free_bytes * min(max(config.max_space_fraction, 0.01), 0.5))
+        max_total = int(
+            free_bytes * min(max(config.max_space_fraction, 0.01), 0.5)
+        )
     else:
         max_total = 50 * 1024 * 1024  # fallback: 50 MiB
 
     max_file_size = max_total // max(config.threads, 1)
     if max_file_size <= 0:
-        return CheckResult(
-            check_name="StressTest",
-            status=Severity.WARNING,
-            summary="Insufficient free space for stress test.",
-            details={"free_bytes": free_bytes},
-            recommendations=["Free up space on the filesystem before running a stress test."],
+        findings.append(Finding(
+            code="stress.insufficient_space",
+            severity=FindingSeverity.WARN,
+            message="Insufficient free space for stress test.",
+            evidence={"free_bytes": free_bytes},
+        ))
+        vr = findings_to_verdict(
+            findings, confidence=Confidence.HIGH, check_category="stress test",
+        )
+        return verdict_to_check_result(
+            "StressTest", vr,
+            extra_details=extra_details,
+            target_description=mount,
         )
 
+    extra_details["max_file_size_bytes"] = max_file_size
+
+    # ── Run stress workers ──
     test_dir = os.path.join(mount, ".disk-health-checker-temp")
     os.makedirs(test_dir, exist_ok=True)
 
@@ -108,53 +147,53 @@ def run_stress_test(config: StressConfig, global_config: GlobalConfig) -> CheckR
     for t in threads:
         t.join()
 
-    # Try to clean up directory (ignore errors)
     try:
         if not os.listdir(test_dir):
             os.rmdir(test_dir)
     except OSError:
         pass
 
-    durations = stats["durations"]
+    # ── Collect results ──
     total_bytes = stats["bytes_written"]
     total_ops = stats["ops"]
     errors = stats["errors"]
-
+    durations = stats["durations"]
     elapsed = config.duration_seconds
-    throughput_mb_s = (total_bytes / (1024 * 1024)) / elapsed if elapsed > 0 else 0.0
+    throughput = (total_bytes / (1024 * 1024)) / elapsed if elapsed > 0 else 0.0
     avg_latency = sum(durations) / len(durations) if durations else 0.0
 
-    details: Dict[str, Any] = {
+    extra_details.update({
         "bytes_written": total_bytes,
         "ops": total_ops,
         "errors": errors,
-        "throughput_mb_s": throughput_mb_s,
+        "throughput_mb_s": throughput,
         "avg_op_duration_seconds": avg_latency,
-        "threads": config.threads,
-        "duration_seconds": config.duration_seconds,
-        "max_file_size_bytes": max_file_size,
-    }
+    })
 
-    status = Severity.OK
-    recommendations = []
-    summary_parts = [f"Wrote {total_bytes} bytes in stress test ({throughput_mb_s:.2f} MiB/s)."]
-
+    # ── Build findings ──
     if errors > 0:
-        status = Severity.CRITICAL
-        summary_parts.append(f"{errors} I/O errors occurred.")
-        recommendations.append("Investigate system logs for I/O errors and consider replacing the drive.")
+        findings.append(Finding(
+            code="stress.io_errors",
+            severity=FindingSeverity.FAIL,
+            message=f"{errors} I/O error(s) occurred during stress test.",
+            evidence={"error_count": errors, "ops_completed": total_ops},
+        ))
 
     if total_ops == 0 and errors == 0:
-        status = Severity.WARNING
-        summary_parts.append("No operations were completed; verify write permissions and free space.")
-        recommendations.append("Ensure the mount point is writable and not mounted read-only.")
+        findings.append(Finding(
+            code="stress.no_ops_completed",
+            severity=FindingSeverity.WARN,
+            message="No operations completed. Check write permissions and free space.",
+            evidence={"bytes_written": total_bytes},
+        ))
 
-    return CheckResult(
-        check_name="StressTest",
-        status=status,
-        summary=" ".join(summary_parts),
-        details=details,
-        recommendations=recommendations,
+    confidence = Confidence.HIGH
+
+    vr = findings_to_verdict(
+        findings, confidence=confidence, check_category="stress test",
     )
-
-
+    return verdict_to_check_result(
+        "StressTest", vr,
+        extra_details=extra_details,
+        target_description=mount,
+    )

@@ -1,3 +1,9 @@
+"""macOS-first non-destructive validation workflow.
+
+Runs SMART + self-test capability check + filesystem stub, then
+produces a global verdict via the verdict engine.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -7,34 +13,34 @@ from typing import List
 from ..checks.smart import run_smart_check
 from ..models.config import GlobalConfig, SmartConfig
 from ..models.results import CheckResult, Severity, SuiteResult
+from ..verdict import compute_global_verdict
+from .runner import aggregate_status
 
 logger = logging.getLogger(__name__)
 
 
 def run_macos_full_workflow(device: str, global_config: GlobalConfig) -> SuiteResult:
-    """
-    macOS-first, non-destructive validation workflow:
+    """macOS non-destructive workflow: SMART + self-test + fs stub.
 
-    - SMART health assessment
-    - SMART self-test capability check and long-test recommendation
-    - Filesystem verification stub (recommend diskutil verifyVolume)
-    - Final human-friendly recommendation: SAFE TO USE / USE WITH CAUTION / DO NOT TRUST
+    The global verdict engine produces the final recommendation
+    (replaces the previous ad-hoc "Overall Recommendation" check).
     """
     started = datetime.now(timezone.utc)
     results: List[CheckResult] = []
 
-    # SMART health
+    # ── SMART health ──
     smart_cfg = SmartConfig(device=device)
     smart_result = run_smart_check(smart_cfg)
     results.append(smart_result)
 
-    health_state = smart_result.details.get("health_state", "UNKNOWN")
-    health_score = smart_result.details.get("health_score")
     supports_self_test = bool(smart_result.details.get("supports_self_test"))
 
-    # Self-test capability and recommendation
+    # ── Self-test capability ──
     if supports_self_test:
-        summary = "Drive supports SMART self-tests. Running a long self-test is recommended for deeper validation."
+        summary = (
+            "Drive supports SMART self-tests. "
+            "Running a long self-test is recommended for deeper validation."
+        )
         recommendations = [
             f"Run a long self-test with: smartctl -t long {device}",
             "Review the self-test log after completion for any errors.",
@@ -46,10 +52,6 @@ def run_macos_full_workflow(device: str, global_config: GlobalConfig) -> SuiteRe
             "If the command fails, the enclosure or drive firmware may not support self-tests.",
         ]
 
-    # Status for self-test capability:
-    # - If the drive is already failing, keep CRITICAL.
-    # - If SMART data is unknown, mark capability as UNKNOWN.
-    # - Otherwise, treat as OK (capable) or UNKNOWN (not confirmed).
     if smart_result.status == Severity.CRITICAL:
         self_test_status = Severity.CRITICAL
     elif smart_result.status == Severity.UNKNOWN:
@@ -61,72 +63,46 @@ def run_macos_full_workflow(device: str, global_config: GlobalConfig) -> SuiteRe
         check_name="SMART Self-Test Capability",
         status=self_test_status,
         summary=summary,
-        details={"supports_self_test": supports_self_test},
+        details={
+            "supports_self_test": supports_self_test,
+            "verdict": "PASS" if supports_self_test else "UNKNOWN",
+            "confidence": "MEDIUM",
+            "health_score": 100 if supports_self_test else 50,
+            "findings": [],
+            "evidence_missing": [] if supports_self_test else ["self_test_support"],
+        },
         recommendations=recommendations,
     )
     results.append(self_test_check)
 
-    # Filesystem verification stub for macOS
+    # ── Filesystem verification stub ──
     fs_stub = CheckResult(
         check_name="Filesystem (macOS stub)",
         status=Severity.UNKNOWN,
         summary="Filesystem verification on macOS is not automated by this tool.",
-        details={},
+        details={
+            "verdict": "UNKNOWN",
+            "confidence": "LOW",
+            "health_score": 50,
+            "findings": [],
+            "evidence_missing": ["filesystem_verification"],
+        },
         recommendations=[
-            "To verify a volume, run: diskutil verifyVolume /dev/diskXsY (replace with the correct volume identifier).",
-            "For APFS containers, see: diskutil apfs list and diskutil verifyVolume for APFS volumes.",
+            "To verify a volume, run: diskutil verifyVolume /dev/diskXsY",
+            "For APFS containers, see: diskutil apfs list",
         ],
     )
     results.append(fs_stub)
 
-    # Final recommendation — derived from the verdict produced by the
-    # evaluation pipeline, not from a parallel re-interpretation.
-    verdict = smart_result.details.get("verdict", "UNKNOWN")
-    confidence = smart_result.details.get("confidence", "LOW")
-
-    _VERDICT_MAP = {
-        "PASS": ("SAFE TO USE", Severity.OK),
-        "WARNING": ("USE WITH CAUTION", Severity.WARNING),
-        "FAIL": ("DO NOT TRUST", Severity.CRITICAL),
-        "UNKNOWN": ("USE WITH CAUTION (SMART health unknown)", Severity.UNKNOWN),
-    }
-    final_rec, status = _VERDICT_MAP.get(verdict, _VERDICT_MAP["UNKNOWN"])
-
-    explanation_parts = [
-        f"Verdict: {verdict} (confidence: {confidence}).",
-    ]
-    if health_score is not None:
-        explanation_parts.append(f"Health score: {health_score}/100.")
-    explanation_parts.append(
-        "Always ensure you have current backups before storing important data on this disk."
-    )
-
-    final_check = CheckResult(
-        check_name="Overall Recommendation",
-        status=status,
-        summary=f"{final_rec}: " + " ".join(explanation_parts),
-        details={
-            "final_recommendation": final_rec,
-            "verdict": verdict,
-            "confidence": confidence,
-            "health_state": health_state,
-            "health_score": health_score,
-        },
-        recommendations=[
-            "If the drive is marked DO NOT TRUST, replace it as soon as possible.",
-            "If marked USE WITH CAUTION, monitor SMART values and avoid using it as sole storage for critical data.",
-        ],
-    )
-    results.append(final_check)
-
     finished = datetime.now(timezone.utc)
+    overall = aggregate_status(results)
+    gv = compute_global_verdict(results)
 
     return SuiteResult(
         target=f"device={device}",
-        overall_status=status,
+        overall_status=overall,
         check_results=results,
         started_at=started,
         finished_at=finished,
+        global_verdict=gv,
     )
-
-

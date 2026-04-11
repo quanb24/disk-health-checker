@@ -3,7 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..verdict.types import GlobalVerdict
 
 
 class Severity(str, Enum):
@@ -34,13 +37,16 @@ class SuiteResult:
     check_results: List[CheckResult]
     started_at: datetime
     finished_at: datetime
+    global_verdict: Optional[GlobalVerdict] = field(default=None)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d: Dict[str, Any] = {
             "target": self.target,
             "overall_status": self.overall_status.value,
             "check_results": [c.to_dict() for c in self.check_results],
             "started_at": self.started_at.isoformat(),
             "finished_at": self.finished_at.isoformat(),
         }
-
+        if self.global_verdict is not None:
+            d["global_verdict"] = self.global_verdict.to_dict()
+        return d
