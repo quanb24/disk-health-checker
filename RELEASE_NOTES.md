@@ -1,3 +1,46 @@
+# Release Notes — v0.2.0
+
+## What's new in v0.2.0
+
+### Global verdict engine
+
+When running `full`, all checks now combine into a single drive-level health assessment:
+- **Health levels:** Healthy, Watch, Degrading, At Risk, Failing, Unknown
+- **Urgency:** No action needed → Replace drive immediately
+- **Recommended usage:** Primary use → Do not trust with any data
+- **Confidence:** HIGH / MEDIUM / LOW — downgrades verdict when evidence is insufficient
+- Cross-check conflict detection (flags when SMART and surface scan disagree)
+- Composite scoring with SMART weighted 3x
+
+### Unified findings pipeline
+
+All checks (SMART, filesystem, surface, stress, integrity) now produce findings through a single evaluation pipeline (`checks/evaluate.py`):
+- Consistent schema: every CheckResult includes `verdict`, `confidence`, `health_score`, `findings`, `evidence_missing`
+- Finding codes are stable across versions (e.g., `ata.reallocated.low`, `fs.write_test_failed`)
+- Severity-based recommendations generated automatically
+
+### Linux disk enumeration
+
+- Automatic disk detection via `lsblk` (no more `--device` required)
+- SATA, NVMe, and USB removable drives detected
+- Mount point enrichment from child partitions
+- 15-second timeout with graceful degradation
+
+### Safety hardening
+
+- `run_full_suite()` now enforces `non_destructive` mode — stress and integrity checks are skipped (with explicit UNKNOWN result) when destructive operations are not allowed
+- All error-state CheckResults now include `health_score` for consistent schema
+
+### Test coverage
+
+- 200+ tests (was 144 in v0.1.1)
+- 5 new ATA/USB test fixtures
+- Comprehensive end-to-end SMART scoring tests (25 scenarios)
+- Schema consistency tests for all check types
+- Full suite runner tests with safety guard verification
+
+---
+
 # Release Notes — v0.1.1
 
 ## What's new in v0.1.1

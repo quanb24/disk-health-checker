@@ -37,6 +37,7 @@ _WEIGHTS = {
     "ata.temperature.very_high": 30,
     "ata.temperature.elevated": 15,
     "ata.udma_crc_errors": 10,
+    "smart.data_unavailable": 0,
 }
 
 
@@ -182,11 +183,27 @@ def evaluate_ata(snap: SmartSnapshot) -> VerdictResult:
     else:
         confidence = Confidence.LOW
 
+    # ---- Insufficient data guard ----
+    # If no SMART attribute counters are readable, we cannot assess drive
+    # health regardless of overall_passed.  This prevents false PASS
+    # results when USB enclosures (or similar) strip attribute data.
+    if not has_any_counter:
+        add(
+            "smart.data_unavailable", FindingSeverity.INFO,
+            "SMART attribute data is unavailable — health cannot be "
+            "determined from overall status alone.",
+        )
+
     # ---- Map to verdict ----
     if has_fail:
         verdict = Verdict.FAIL
     elif has_warn:
         verdict = Verdict.WARNING
+    elif not has_any_counter:
+        # Never claim PASS without attribute data, even if overall_passed
+        # is present.  USB bridges commonly return overall_passed=True
+        # while stripping all counters.
+        verdict = Verdict.UNKNOWN
     elif confidence == Confidence.LOW:
         # Cannot claim PASS without minimum evidence.
         verdict = Verdict.UNKNOWN

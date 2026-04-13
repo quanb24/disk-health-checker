@@ -1,5 +1,20 @@
 # Progress Log
 
+## v0.2.0 — Release (2026-04-12)
+
+**Shipped.** All v0.2.0-dev features finalized plus:
+
+- Safety fix: `run_full_suite()` now enforces `non_destructive` mode (skips stress/integrity with explicit UNKNOWN results)
+- Schema fix: all error-state CheckResults include `health_score` for consistent schema
+- 5 new ATA/USB test fixtures (healthy, failing, warning, UDMA CRC, USB half-blind)
+- Expanded test_smart_scoring.py from 3 to 25 tests (full verdict/score/code coverage)
+- Schema consistency tests for all 5 check types
+- Full suite runner tests (9 tests covering safety guard, aggregate_status, global verdict)
+- Version bumped to 0.2.0 across pyproject.toml and __init__.py
+- 200+ total tests
+
+---
+
 ## v0.2.0-dev — Linux Support, Unified Pipeline, Global Verdict, & Robustness (2026-04-10)
 
 ### Completed

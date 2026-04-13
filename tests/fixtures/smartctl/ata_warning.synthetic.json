@@ -1,0 +1,24 @@
+{
+  "_fixture_note": "SYNTHETIC — Warning SATA SSD with moderate wear and a few reallocated sectors. overall_passed=true but degrading.",
+  "smartctl": {"version": [7, 4]},
+  "device": {"name": "/dev/sda", "type": "sat", "protocol": "ATA"},
+  "model_name": "Samsung SSD 860 EVO 500GB",
+  "serial_number": "S3Z9NB0K000000",
+  "firmware_version": "RVT04B6Q",
+  "user_capacity": {"bytes": 500107862016},
+  "rotation_rate": 0,
+  "smart_status": {"passed": true},
+  "temperature": {"current": 58},
+  "power_on_time": {"hours": 35000},
+  "ata_smart_attributes": {
+    "table": [
+      {"id": 5, "name": "Reallocated_Sector_Ct", "value": 100, "worst": 100, "thresh": 10, "raw": {"value": 12, "string": "12"}},
+      {"id": 9, "name": "Power_On_Hours", "value": 95, "worst": 95, "thresh": 0, "raw": {"value": 35000, "string": "35000"}},
+      {"id": 177, "name": "Wear_Leveling_Count", "value": 25, "worst": 25, "thresh": 0, "raw": {"value": 3056, "string": "3056"}},
+      {"id": 194, "name": "Temperature_Celsius", "value": 58, "worst": 64, "thresh": 0, "raw": {"value": 58, "string": "58 (Min/Max 20/64)"}},
+      {"id": 197, "name": "Current_Pending_Sector", "value": 200, "worst": 200, "thresh": 0, "raw": {"value": 0, "string": "0"}},
+      {"id": 198, "name": "Offline_Uncorrectable", "value": 100, "worst": 253, "thresh": 0, "raw": {"value": 0, "string": "0"}},
+      {"id": 199, "name": "UDMA_CRC_Error_Count", "value": 200, "worst": 200, "thresh": 0, "raw": {"value": 0, "string": "0"}}
+    ]
+  }
+}

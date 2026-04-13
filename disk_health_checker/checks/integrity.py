@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Tuple
 from ..models.config import IntegrityConfig, GlobalConfig
 from ..models.results import CheckResult
 from ..models.smart_types import Confidence, Finding, FindingSeverity
+from ..utils.validation import safe_path, validate_hash_algorithm
 from .evaluate import findings_to_verdict, verdict_to_check_result
 
 logger = logging.getLogger(__name__)
@@ -75,15 +76,30 @@ def _manifest_integrity_check(config: IntegrityConfig) -> Dict[str, Any]:
     with open(config.manifest_path, "r", encoding="utf-8") as f:
         manifest = json.load(f)
 
-    algo = manifest.get("algorithm", config.algorithm)
+    raw_algo = manifest.get("algorithm", config.algorithm)
+    try:
+        algo = validate_hash_algorithm(raw_algo)
+    except ValueError:
+        return {
+            "manifest_error": f"Unsupported hash algorithm in manifest: {raw_algo!r}",
+            "manifest_checked_files": [],
+            "manifest_mismatched_files": [],
+            "manifest_missing_files": [],
+        }
     files: Dict[str, str] = manifest.get("files", {})
 
     mismatches: List[str] = []
     missing: List[str] = []
     checked: List[str] = []
+    traversal_blocked: List[str] = []
 
     for rel_path, expected in files.items():
-        full_path = os.path.join(config.mount_point, rel_path)
+        try:
+            full_path = safe_path(config.mount_point, rel_path)
+        except ValueError:
+            logger.warning("Path traversal blocked in manifest: %r", rel_path)
+            traversal_blocked.append(rel_path)
+            continue
         if not os.path.isfile(full_path):
             missing.append(rel_path)
             continue
@@ -102,6 +118,7 @@ def _manifest_integrity_check(config: IntegrityConfig) -> Dict[str, Any]:
         "manifest_checked_files": checked,
         "manifest_mismatched_files": mismatches,
         "manifest_missing_files": missing,
+        "manifest_traversal_blocked": traversal_blocked,
     }
 
 
@@ -167,6 +184,15 @@ def run_integrity_check(
                 severity=FindingSeverity.WARN,
                 message=f"{len(manifest_missing)} file(s) listed in manifest are missing.",
                 evidence={"missing_files": manifest_missing},
+            ))
+
+        manifest_traversal = manifest_results.get("manifest_traversal_blocked", [])
+        if manifest_traversal:
+            findings.append(Finding(
+                code="integrity.manifest_path_escape",
+                severity=FindingSeverity.FAIL,
+                message=f"{len(manifest_traversal)} manifest path(s) blocked: attempted directory traversal outside mount point.",
+                evidence={"blocked_paths": manifest_traversal},
             ))
 
     confidence = Confidence.HIGH

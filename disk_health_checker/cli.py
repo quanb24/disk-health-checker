@@ -27,6 +27,7 @@ from .checks.integrity import run_integrity_check
 from .utils.logging import setup_logging
 from .utils.disks import list_disks, select_disk_interactively
 from .utils.platform import get_platform_info
+from .utils.validation import validate_device_path
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -157,6 +158,7 @@ def _build_parser() -> argparse.ArgumentParser:
     integrity.add_argument(
         "--algo",
         default="sha256",
+        choices=["sha256", "sha384", "sha512", "blake2b"],
         help="Hash algorithm for manifest checks (default: sha256).",
     )
 
@@ -391,6 +393,15 @@ def _print_human_suite(result: SuiteResult) -> None:
         _print_global_verdict(result.global_verdict)
 
 
+# Exit codes:
+#   0 = OK (all checks passed)
+#   1 = WARNING (drive has warnings but is usable)
+#   2 = CRITICAL (drive health is critical)
+#   3 = UNKNOWN (could not determine health)
+#   4 = OPERATIONAL ERROR (tool-level failure, not a health verdict)
+EXIT_OPERATIONAL_ERROR = 4
+
+
 def _exit_code_from_severity(sev: Severity) -> int:
     if sev == Severity.OK:
         return 0
@@ -419,6 +430,11 @@ def _resolve_device(
     """
     device = getattr(args, "device", None)
     if device:
+        try:
+            validate_device_path(device)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return None
         # When --device is given directly we don't know the transport.
         # Try a quick lookup so USB fallback still works.
         transport = None
@@ -481,7 +497,7 @@ def main(argv: List[str] | None = None) -> int:
                 print("No disks detected. Ensure 'lsblk' is installed (usually part of util-linux).")
             else:
                 print("Automatic disk detection is not supported on this platform.")
-            return 1
+            return EXIT_OPERATIONAL_ERROR
         print("Detected disks:")
         for d in disks:
             location = "internal" if d.is_internal else "external" if d.is_external else "unknown location"
@@ -502,7 +518,7 @@ def main(argv: List[str] | None = None) -> int:
     if args.command in ("full", "smart", "doctor"):
         resolved = _resolve_device(args, info, json_mode=args.json)
         if not resolved:
-            return 1
+            return EXIT_OPERATIONAL_ERROR
         device, transport = resolved
 
     # full command
@@ -520,7 +536,7 @@ def main(argv: List[str] | None = None) -> int:
                 "  disk-health-checker doctor --device /dev/sdX",
                 file=sys.stderr,
             )
-            return 1
+            return EXIT_OPERATIONAL_ERROR
 
         if args.json:
             print(json.dumps(suite.to_dict(), indent=2))
@@ -542,6 +558,11 @@ def main(argv: List[str] | None = None) -> int:
         check_result = run_filesystem_check(cfg, global_config)
         target_desc = f"mount={args.mount}"
     elif args.command == "surface":
+        try:
+            validate_device_path(args.device)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return EXIT_OPERATIONAL_ERROR
         cfg = SurfaceScanConfig(device=args.device, quick=not args.full)
         check_result = run_surface_scan(cfg, global_config)
         target_desc = f"device={args.device}"
@@ -552,7 +573,7 @@ def main(argv: List[str] | None = None) -> int:
                 "  disk-health-checker --allow-destructive stress --mount /Volumes/MyDisk",
                 file=sys.stderr,
             )
-            return 1
+            return EXIT_OPERATIONAL_ERROR
         cfg = StressConfig(
             mount_point=args.mount,
             duration_seconds=args.duration,
@@ -568,7 +589,7 @@ def main(argv: List[str] | None = None) -> int:
                 "  disk-health-checker --allow-destructive integrity --mount /Volumes/MyDisk",
                 file=sys.stderr,
             )
-            return 1
+            return EXIT_OPERATIONAL_ERROR
         cfg = IntegrityConfig(
             mount_point=args.mount,
             manifest_path=args.manifest,

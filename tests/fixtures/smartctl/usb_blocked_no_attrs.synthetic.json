@@ -1,0 +1,14 @@
+{
+  "_fixture_note": "SYNTHETIC — USB bridge that returns device identity but no SMART attributes. Tests confidence gate degradation to UNKNOWN.",
+  "smartctl": {"version": [7, 4]},
+  "device": {"name": "/dev/sdc", "type": "sat", "protocol": "ATA"},
+  "model_name": "WDC WD60EDAZ-11BMZB0",
+  "serial_number": "WD-WX000000000",
+  "firmware_version": "80.00A80",
+  "user_capacity": {"bytes": 6001175126016},
+  "rotation_rate": 5400,
+  "smart_status": {"passed": true},
+  "ata_smart_attributes": {
+    "table": []
+  }
+}

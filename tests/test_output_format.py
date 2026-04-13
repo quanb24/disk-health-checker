@@ -169,6 +169,77 @@ def test_json_output_has_structured_fields():
     assert cr["details"]["capacity_bytes"] == 1000204886016
 
 
+# ---- schema consistency across all check types ----
+
+REQUIRED_DETAILS_KEYS = {"verdict", "confidence", "health_score", "findings", "evidence_missing"}
+
+
+def test_schema_smart_check_result():
+    """SMART CheckResult.details has all required schema fields."""
+    data = _healthy_ata()
+    check = interpret_smart(data)
+    assert REQUIRED_DETAILS_KEYS.issubset(check.details.keys())
+
+
+def test_schema_filesystem_check_result():
+    """Filesystem CheckResult.details has all required schema fields."""
+    import tempfile
+    from disk_health_checker.checks.filesystem import run_filesystem_check
+    from disk_health_checker.models.config import FsConfig, GlobalConfig
+
+    with tempfile.TemporaryDirectory() as d:
+        cfg = FsConfig(mount_point=d)
+        gcfg = GlobalConfig()
+        result = run_filesystem_check(cfg, gcfg)
+        assert REQUIRED_DETAILS_KEYS.issubset(result.details.keys())
+
+
+def test_schema_surface_scan_check_result():
+    """Surface scan CheckResult.details has all required schema fields."""
+    from disk_health_checker.checks.surface import run_surface_scan
+    from disk_health_checker.models.config import SurfaceScanConfig, GlobalConfig
+
+    cfg = SurfaceScanConfig(device="/dev/nonexistent-test-device")
+    gcfg = GlobalConfig()
+    result = run_surface_scan(cfg, gcfg)
+    assert REQUIRED_DETAILS_KEYS.issubset(result.details.keys())
+
+
+def test_schema_stress_test_check_result():
+    """Stress test CheckResult.details has all required schema fields."""
+    from disk_health_checker.checks.stress import run_stress_test
+    from disk_health_checker.models.config import StressConfig, GlobalConfig
+
+    cfg = StressConfig(mount_point="/nonexistent-test-path")
+    gcfg = GlobalConfig()
+    result = run_stress_test(cfg, gcfg)
+    assert REQUIRED_DETAILS_KEYS.issubset(result.details.keys())
+
+
+def test_schema_integrity_check_result():
+    """Integrity CheckResult.details has all required schema fields."""
+    from disk_health_checker.checks.integrity import run_integrity_check
+    from disk_health_checker.models.config import IntegrityConfig, GlobalConfig
+
+    cfg = IntegrityConfig(mount_point="/nonexistent-test-path")
+    gcfg = GlobalConfig()
+    result = run_integrity_check(cfg, gcfg)
+    assert REQUIRED_DETAILS_KEYS.issubset(result.details.keys())
+
+
+def test_suite_to_dict_json_roundtrip():
+    """SuiteResult.to_dict() produces valid JSON with expected structure."""
+    data = _healthy_ata()
+    suite = _make_suite(data)
+    j = json.loads(json.dumps(suite.to_dict()))
+    assert "target" in j
+    assert "overall_status" in j
+    assert "check_results" in j
+    assert "started_at" in j
+    assert "finished_at" in j
+    assert len(j["check_results"]) == 1
+
+
 def test_json_output_nvme_fields():
     data = {
         "device": {"type": "nvme"},

@@ -216,13 +216,19 @@ def test_confidence_high_with_full_signals():
 
 
 def test_confidence_medium_with_only_overall():
-    """overall_passed present but all counters missing → MEDIUM."""
+    """overall_passed present but all counters missing → MEDIUM confidence, UNKNOWN verdict.
+
+    Even with MEDIUM confidence, missing attribute counters force UNKNOWN
+    verdict to prevent false PASS on USB-bridged drives.
+    """
     r = evaluate_ata(_snap(
         reallocated_sectors=None,
         pending_sectors=None,
         offline_uncorrectable=None,
     ))
     assert r.confidence == Confidence.MEDIUM
+    assert r.verdict == Verdict.UNKNOWN
+    assert any(f.code == "smart.data_unavailable" for f in r.findings)
 
 
 def test_confidence_medium_with_only_counter():

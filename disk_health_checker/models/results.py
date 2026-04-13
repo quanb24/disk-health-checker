@@ -16,6 +16,30 @@ class Severity(str, Enum):
     UNKNOWN = "UNKNOWN"
 
 
+class CheckDetails(Dict[str, Any]):
+    """Typed documentation of the expected keys in CheckResult.details.
+
+    All checks produce these keys via the unified verdict pipeline
+    (evaluate.verdict_to_check_result).  SMART checks add extra keys
+    (model_name, serial_number, etc.) and error paths add failure_reason.
+
+    Core keys (always present after verdict pipeline):
+        verdict: str          — "PASS", "WARN", "FAIL", "UNKNOWN"
+        confidence: str       — "HIGH", "MEDIUM", "LOW"
+        health_score: int     — 0-100 composite score
+        findings: list[dict]  — structured finding dicts
+        evidence_missing: list[str] — data gaps
+
+    Optional keys:
+        failure_reason: str   — set on error paths
+        internal_error: str   — exception type name (ARCH-04)
+        model_name: str       — SMART identity
+        serial_number: str    — SMART identity
+        device_kind: str      — "ata" or "nvme"
+        mount_point: str      — for fs/stress/integrity checks
+    """
+
+
 @dataclass
 class CheckResult:
     check_name: str

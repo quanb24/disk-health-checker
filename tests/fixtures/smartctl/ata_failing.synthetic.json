@@ -1,0 +1,25 @@
+{
+  "_fixture_note": "SYNTHETIC — Failing SATA HDD with high reallocated sectors, pending sectors, and offline uncorrectable. overall_passed=false.",
+  "smartctl": {"version": [7, 4]},
+  "device": {"name": "/dev/sda", "type": "sat", "protocol": "ATA"},
+  "model_name": "Seagate ST2000DM001-1CH164",
+  "serial_number": "Z1E00000",
+  "firmware_version": "CC27",
+  "user_capacity": {"bytes": 2000398934016},
+  "rotation_rate": 7200,
+  "smart_status": {"passed": false},
+  "temperature": {"current": 42},
+  "power_on_time": {"hours": 48000},
+  "ata_smart_attributes": {
+    "table": [
+      {"id": 1, "name": "Raw_Read_Error_Rate", "value": 78, "worst": 67, "thresh": 6, "raw": {"value": 182635520, "string": "182635520"}},
+      {"id": 5, "name": "Reallocated_Sector_Ct", "value": 1, "worst": 1, "thresh": 36, "raw": {"value": 4892, "string": "4892"}},
+      {"id": 9, "name": "Power_On_Hours", "value": 52, "worst": 52, "thresh": 0, "raw": {"value": 48000, "string": "48000"}},
+      {"id": 187, "name": "Reported_Uncorrect", "value": 1, "worst": 1, "thresh": 0, "raw": {"value": 327, "string": "327"}},
+      {"id": 194, "name": "Temperature_Celsius", "value": 42, "worst": 55, "thresh": 0, "raw": {"value": 42, "string": "42 (Min/Max 18/55)"}},
+      {"id": 197, "name": "Current_Pending_Sector", "value": 100, "worst": 100, "thresh": 0, "raw": {"value": 48, "string": "48"}},
+      {"id": 198, "name": "Offline_Uncorrectable", "value": 100, "worst": 100, "thresh": 0, "raw": {"value": 48, "string": "48"}},
+      {"id": 199, "name": "UDMA_CRC_Error_Count", "value": 200, "worst": 200, "thresh": 0, "raw": {"value": 0, "string": "0"}}
+    ]
+  }
+}

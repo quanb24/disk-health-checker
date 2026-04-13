@@ -1,0 +1,23 @@
+{
+  "_fixture_note": "SYNTHETIC — SATA HDD with high UDMA CRC errors (cable/port issue). Drive itself is healthy but connection is bad.",
+  "smartctl": {"version": [7, 4]},
+  "device": {"name": "/dev/sdb", "type": "sat", "protocol": "ATA"},
+  "model_name": "Toshiba HDWD110",
+  "serial_number": "Z8A00000",
+  "firmware_version": "MS1OA750",
+  "user_capacity": {"bytes": 1000204886016},
+  "rotation_rate": 7200,
+  "smart_status": {"passed": true},
+  "temperature": {"current": 36},
+  "power_on_time": {"hours": 8000},
+  "ata_smart_attributes": {
+    "table": [
+      {"id": 5, "name": "Reallocated_Sector_Ct", "value": 200, "worst": 200, "thresh": 140, "raw": {"value": 0, "string": "0"}},
+      {"id": 9, "name": "Power_On_Hours", "value": 93, "worst": 93, "thresh": 0, "raw": {"value": 8000, "string": "8000"}},
+      {"id": 194, "name": "Temperature_Celsius", "value": 36, "worst": 48, "thresh": 0, "raw": {"value": 36, "string": "36 (Min/Max 20/48)"}},
+      {"id": 197, "name": "Current_Pending_Sector", "value": 200, "worst": 200, "thresh": 0, "raw": {"value": 0, "string": "0"}},
+      {"id": 198, "name": "Offline_Uncorrectable", "value": 100, "worst": 253, "thresh": 0, "raw": {"value": 0, "string": "0"}},
+      {"id": 199, "name": "UDMA_CRC_Error_Count", "value": 198, "worst": 198, "thresh": 0, "raw": {"value": 1547, "string": "1547"}}
+    ]
+  }
+}

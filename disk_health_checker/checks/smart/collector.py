@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from disk_health_checker.utils.platform import which, get_platform_info
+from disk_health_checker.utils.validation import validate_device_path
 from .errors import (
     SmartctlNotInstalled,
     SmartctlTimeout,
@@ -97,6 +98,8 @@ def collect_smart(
         SmartNotSupported: device/enclosure does not expose SMART.
         SmartctlProtocolError: unclassified non-zero exit.
     """
+    validate_device_path(device)
+
     smartctl_path = which("smartctl")
     if not smartctl_path:
         raise SmartctlNotInstalled()

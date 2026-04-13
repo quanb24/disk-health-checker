@@ -39,6 +39,7 @@ _WEIGHTS = {
     "nvme.temperature.critical": 30,
     "nvme.temperature.warning": 15,
     "nvme.critical_comp_time": 15,
+    "smart.data_unavailable": 0,
 }
 
 # Fallback temperature thresholds when the drive doesn't report its own.
@@ -214,11 +215,24 @@ def evaluate_nvme(snap: SmartSnapshot) -> VerdictResult:
     else:
         confidence = Confidence.LOW
 
+    # ---- Insufficient data guard ----
+    has_both_nvme_signals = has_cw and has_spare
+    if not has_both_nvme_signals and not has_fail and not has_warn:
+        add(
+            "smart.data_unavailable", FindingSeverity.INFO,
+            "NVMe health log data is incomplete — health cannot be "
+            "fully determined.",
+        )
+
     # ---- Map to verdict ----
     if has_fail:
         verdict = Verdict.FAIL
     elif has_warn:
         verdict = Verdict.WARNING
+    elif not has_both_nvme_signals:
+        # Never claim PASS without both critical_warning and
+        # available_spare — partial NVMe data is insufficient.
+        verdict = Verdict.UNKNOWN
     elif confidence == Confidence.LOW:
         verdict = Verdict.UNKNOWN
     else:

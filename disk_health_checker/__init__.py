@@ -9,7 +9,7 @@ Provides a CLI for assessing disk health via:
 - data integrity verification
 """
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 __all__ = [
     "cli",

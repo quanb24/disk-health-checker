@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from disk_health_checker.cli import main
+from disk_health_checker.cli import main, EXIT_OPERATIONAL_ERROR
 
 
 class _FakeLinux:
@@ -39,18 +39,18 @@ def test_no_command_exits_error():
     assert exc_info.value.code != 0
 
 
-def test_smart_no_device_no_macos_exits_1(monkeypatch):
-    """On non-macOS without --device, should exit 1 with a helpful message."""
+def test_smart_no_device_no_macos_exits_operational_error(monkeypatch):
+    """On non-macOS without --device, should exit with operational error."""
     _patch_platform(monkeypatch, _FakeLinux())
     result = main(["smart"])
-    assert result == 1
+    assert result == EXIT_OPERATIONAL_ERROR
 
 
-def test_json_mode_without_device_exits_1(monkeypatch, capsys):
+def test_json_mode_without_device_exits_operational_error(monkeypatch, capsys):
     """--json without --device must fail, not prompt interactively."""
     _patch_platform(monkeypatch, _FakeMacOS())
     result = main(["--json", "smart"])
-    assert result == 1
+    assert result == EXIT_OPERATIONAL_ERROR
     captured = capsys.readouterr()
     assert "required" in captured.err.lower()
 
@@ -62,17 +62,17 @@ def test_smart_with_nonexistent_device_returns_unknown(monkeypatch):
         "disk_health_checker.checks.smart.collector.which",
         lambda _: None,
     )
-    result = main(["smart", "--device", "/dev/null"])
+    result = main(["smart", "--device", "/dev/sda"])
     assert result == 3
 
 
-def test_doctor_without_device_no_macos_exits_1(monkeypatch):
+def test_doctor_without_device_no_macos_exits_operational_error(monkeypatch):
     _patch_platform(monkeypatch, _FakeLinux())
     result = main(["doctor"])
-    assert result == 1
+    assert result == EXIT_OPERATIONAL_ERROR
 
 
-def test_full_without_device_no_macos_exits_1(monkeypatch):
+def test_full_without_device_no_macos_exits_operational_error(monkeypatch):
     _patch_platform(monkeypatch, _FakeLinux())
     result = main(["full"])
-    assert result == 1
+    assert result == EXIT_OPERATIONAL_ERROR

@@ -6,9 +6,11 @@ Produces structured findings fed through the unified verdict pipeline.
 
 from __future__ import annotations
 
+import atexit
 import logging
 import os
 import random
+import shutil
 import threading
 import time
 from typing import Any, Dict, List
@@ -125,6 +127,11 @@ def run_stress_test(config: StressConfig, global_config: GlobalConfig) -> CheckR
     test_dir = os.path.join(mount, ".disk-health-checker-temp")
     os.makedirs(test_dir, exist_ok=True)
 
+    # Ensure cleanup even on abrupt exit (SIGINT, OOM, etc.)
+    def _cleanup_test_dir():
+        shutil.rmtree(test_dir, ignore_errors=True)
+    atexit.register(_cleanup_test_dir)
+
     stats: Dict[str, Any] = {
         "bytes_written": 0,
         "ops": 0,
@@ -147,11 +154,9 @@ def run_stress_test(config: StressConfig, global_config: GlobalConfig) -> CheckR
     for t in threads:
         t.join()
 
-    try:
-        if not os.listdir(test_dir):
-            os.rmdir(test_dir)
-    except OSError:
-        pass
+    # Clean up test directory — atexit handler covers interruptions
+    shutil.rmtree(test_dir, ignore_errors=True)
+    atexit.unregister(_cleanup_test_dir)
 
     # ── Collect results ──
     total_bytes = stats["bytes_written"]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import subprocess
 from datetime import datetime, timezone
 from typing import List
 
@@ -14,6 +15,7 @@ from ..models.config import (
 )
 from ..models.results import CheckResult, SuiteResult, Severity
 from ..checks.smart import run_smart_check
+from ..checks.smart.errors import SmartctlError
 from ..checks.filesystem import run_filesystem_check
 from ..checks.surface import run_surface_scan
 from ..checks.stress import run_stress_test
@@ -21,6 +23,29 @@ from ..checks.integrity import run_integrity_check
 from ..verdict import compute_global_verdict
 
 logger = logging.getLogger(__name__)
+
+# Exception types that represent expected operational failures (I/O,
+# subprocess, SMART hardware issues).  Everything else is a bug.
+_EXPECTED_ERRORS = (SmartctlError, OSError, subprocess.SubprocessError, ValueError, KeyError)
+
+
+def _error_check_result(
+    check_name: str, exc: Exception, evidence_key: str,
+) -> CheckResult:
+    """Build a standardised UNKNOWN CheckResult for a failed check."""
+    return CheckResult(
+        check_name=check_name,
+        status=Severity.UNKNOWN,
+        summary=f"{check_name} check failed: {exc}",
+        details={
+            "verdict": "UNKNOWN",
+            "confidence": "LOW",
+            "health_score": 50,
+            "findings": [],
+            "evidence_missing": [evidence_key],
+            "internal_error": type(exc).__name__,
+        },
+    )
 
 
 def aggregate_status(results: List[CheckResult]) -> Severity:
@@ -63,91 +88,79 @@ def run_full_suite(
     try:
         smart_cfg = SmartConfig(device=device)
         results.append(run_smart_check(smart_cfg))
-    except Exception as exc:  # pragma: no cover - defensive
+    except _EXPECTED_ERRORS as exc:  # pragma: no cover - defensive
         logger.exception("SMART check failed")
-        results.append(
-            CheckResult(
-                check_name="SMART",
-                status=Severity.UNKNOWN,
-                summary=f"SMART check failed: {exc}",
-                details={
-                    "verdict": "UNKNOWN", "confidence": "LOW",
-                    "findings": [], "evidence_missing": ["smart_data"],
-                },
-            )
-        )
+        results.append(_error_check_result("SMART", exc, "smart_data"))
 
     # Filesystem
     try:
         fs_cfg = FsConfig(mount_point=mount_point)
         results.append(run_filesystem_check(fs_cfg, global_config))
-    except Exception as exc:  # pragma: no cover - defensive
+    except _EXPECTED_ERRORS as exc:  # pragma: no cover - defensive
         logger.exception("Filesystem check failed")
-        results.append(
-            CheckResult(
-                check_name="Filesystem",
-                status=Severity.UNKNOWN,
-                summary=f"Filesystem check failed: {exc}",
-                details={
-                    "verdict": "UNKNOWN", "confidence": "LOW",
-                    "findings": [], "evidence_missing": ["filesystem"],
-                },
-            )
-        )
+        results.append(_error_check_result("Filesystem", exc, "filesystem"))
 
     # Surface
     try:
         surf_cfg = SurfaceScanConfig(device=device, quick=quick_surface)
         results.append(run_surface_scan(surf_cfg, global_config))
-    except Exception as exc:  # pragma: no cover - defensive
+    except _EXPECTED_ERRORS as exc:  # pragma: no cover - defensive
         logger.exception("Surface scan failed")
-        results.append(
-            CheckResult(
-                check_name="SurfaceScan",
-                status=Severity.UNKNOWN,
-                summary=f"Surface scan failed: {exc}",
-                details={
-                    "verdict": "UNKNOWN", "confidence": "LOW",
-                    "findings": [], "evidence_missing": ["surface_scan"],
-                },
-            )
-        )
+        results.append(_error_check_result("SurfaceScan", exc, "surface_scan"))
 
-    # Stress
-    try:
-        stress_cfg = StressConfig(mount_point=mount_point)
-        results.append(run_stress_test(stress_cfg, global_config))
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.exception("Stress test failed")
+    # Stress — requires destructive mode
+    if global_config.non_destructive:
+        logger.info("Skipping stress test (non-destructive mode)")
         results.append(
             CheckResult(
                 check_name="StressTest",
                 status=Severity.UNKNOWN,
-                summary=f"Stress test failed: {exc}",
+                summary="Skipped — non-destructive mode active.",
                 details={
                     "verdict": "UNKNOWN", "confidence": "LOW",
+                    "health_score": 50,
                     "findings": [], "evidence_missing": ["stress_test"],
+                    "reason": "non_destructive_mode",
                 },
+                recommendations=[
+                    "Re-run with --allow-destructive to enable stress testing.",
+                ],
             )
         )
+    else:
+        try:
+            stress_cfg = StressConfig(mount_point=mount_point)
+            results.append(run_stress_test(stress_cfg, global_config))
+        except _EXPECTED_ERRORS as exc:  # pragma: no cover - defensive
+            logger.exception("Stress test failed")
+            results.append(_error_check_result("StressTest", exc, "stress_test"))
 
-    # Integrity
-    try:
-        integ_cfg = IntegrityConfig(mount_point=mount_point)
-        results.append(run_integrity_check(integ_cfg, global_config))
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.exception("Integrity check failed")
+    # Integrity — requires destructive mode
+    if global_config.non_destructive:
+        logger.info("Skipping integrity check (non-destructive mode)")
         results.append(
             CheckResult(
                 check_name="Integrity",
                 status=Severity.UNKNOWN,
-                summary=f"Integrity check failed: {exc}",
+                summary="Skipped — non-destructive mode active.",
                 details={
                     "verdict": "UNKNOWN", "confidence": "LOW",
+                    "health_score": 50,
                     "findings": [], "evidence_missing": ["integrity"],
+                    "reason": "non_destructive_mode",
                 },
+                recommendations=[
+                    "Re-run with --allow-destructive to enable integrity testing.",
+                ],
             )
         )
+    else:
+        try:
+            integ_cfg = IntegrityConfig(mount_point=mount_point)
+            results.append(run_integrity_check(integ_cfg, global_config))
+        except _EXPECTED_ERRORS as exc:  # pragma: no cover - defensive
+            logger.exception("Integrity check failed")
+            results.append(_error_check_result("Integrity", exc, "integrity"))
 
     finished = datetime.now(timezone.utc)
     overall = aggregate_status(results)
