@@ -7,12 +7,11 @@ authors = [
 ]
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
 keywords = ["disk", "storage", "health", "SMART", "filesystem", "stress-test"]
 
 classifiers = [
   "Programming Language :: Python :: 3",
-  "License :: OSI Approved :: MIT License",
   "Operating System :: POSIX :: Linux",
   "Operating System :: MacOS",
   "Topic :: System :: Systems Administration",
