@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Disk Health Checker — Setup Guide</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --accent: #22c55e;
+    --accent-dim: #16a34a;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --info: #3b82f6;
+    --code-bg: #0d1117;
+    --badge-pass: #166534;
+    --badge-warn: #854d0e;
+    --badge-fail: #991b1b;
+    --badge-unknown: #374151;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    padding: 0;
+  }
+
+  .hero {
+    text-align: center;
+    padding: 4rem 2rem 3rem;
+    background: linear-gradient(180deg, #0f1923 0%, var(--bg) 100%);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .hero-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+  }
+
+  .hero h1 {
+    font-size: 2.4rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    margin-bottom: 0.5rem;
+  }
+
+  .hero h1 span { color: var(--accent); }
+
+  .hero .subtitle {
+    color: var(--text-muted);
+    font-size: 1.15rem;
+    max-width: 500px;
+    margin: 0 auto;
+  }
+
+  .version-badge {
+    display: inline-block;
+    margin-top: 1rem;
+    padding: 0.25rem 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.8rem;
+    color: var(--accent);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .container {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 4rem;
+  }
+
+  /* Requirements banner */
+  .req-banner {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem 2rem;
+    margin-bottom: 3rem;
+  }
+
+  .req-banner h2 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+  }
+
+  .req-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .req-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.95rem;
+  }
+
+  .req-check {
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 1.1rem;
+  }
+
+  /* Steps */
+  .step {
+    margin-bottom: 2.5rem;
+    position: relative;
+  }
+
+  .step-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .step-number {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #000;
+    font-weight: 700;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .step-number.optional {
+    background: var(--border);
+    color: var(--text-muted);
+  }
+
+  .step h3 {
+    font-size: 1.2rem;
+    font-weight: 600;
+  }
+
+  .step p {
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+    font-size: 0.95rem;
+  }
+
+  .step p strong { color: var(--text); }
+
+  /* Code blocks */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    margin: 0.75rem 0;
+    font-size: 0.88rem;
+    line-height: 1.6;
+  }
+
+  code {
+    font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', Menlo, monospace;
+    font-size: 0.88rem;
+  }
+
+  p code, li code, td code {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    font-size: 0.85em;
+  }
+
+  .cmd-comment { color: var(--text-muted); }
+  .cmd-output { color: var(--accent); font-style: italic; }
+
+  /* Callout */
+  .callout {
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+  }
+
+  .callout-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 0.1rem; }
+
+  .callout.tip {
+    background: rgba(34, 197, 94, 0.08);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+  }
+
+  .callout.info {
+    background: rgba(59, 130, 246, 0.08);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+  }
+
+  .callout.warn {
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+  }
+
+  /* Verdict cards */
+  .verdict-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+    margin: 1rem 0;
+  }
+
+  .verdict-card {
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+
+  .verdict-card .label {
+    font-weight: 700;
+    font-size: 0.85rem;
+    letter-spacing: 0.03em;
+    margin-bottom: 0.2rem;
+  }
+
+  .verdict-card .desc {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    line-height: 1.4;
+  }
+
+  .verdict-card.pass   { background: rgba(34, 197, 94, 0.08); }
+  .verdict-card.pass .label   { color: #22c55e; }
+  .verdict-card.warn   { background: rgba(245, 158, 11, 0.08); }
+  .verdict-card.warn .label   { color: #f59e0b; }
+  .verdict-card.fail   { background: rgba(239, 68, 68, 0.08); }
+  .verdict-card.fail .label   { color: #ef4444; }
+  .verdict-card.unknown { background: rgba(107, 114, 128, 0.08); }
+  .verdict-card.unknown .label { color: #8b949e; }
+
+  /* Troubleshooting table */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+  }
+
+  th {
+    text-align: left;
+    font-weight: 600;
+    padding: 0.6rem 0.75rem;
+    border-bottom: 2px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  td {
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  tr:last-child td { border-bottom: none; }
+
+  /* Quick ref */
+  .quick-ref {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.06), rgba(59, 130, 246, 0.06));
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem 2rem;
+    margin-top: 3rem;
+  }
+
+  .quick-ref h3 {
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+    color: var(--accent);
+  }
+
+  /* Divider */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2.5rem 0;
+  }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .footer a { color: var(--accent); text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .hero h1 { font-size: 1.8rem; }
+    .verdict-grid { grid-template-columns: 1fr; }
+    .req-grid { grid-template-columns: 1fr 1fr; }
+    .container { padding: 1.5rem 1rem 3rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-icon">&#x1F4BF;</div>
+  <h1>Disk Health <span>Checker</span></h1>
+  <p class="subtitle">Setup guide for checking external hard drives on macOS</p>
+  <div class="version-badge">v0.2.0</div>
+</div>
+
+<div class="container">
+
+  <!-- Requirements -->
+  <div class="req-banner">
+    <h2>What You Need</h2>
+    <div class="req-grid">
+      <div class="req-item"><span class="req-check">&#10003;</span> A Mac (Intel or Apple Silicon)</div>
+      <div class="req-item"><span class="req-check">&#10003;</span> Terminal access</div>
+      <div class="req-item"><span class="req-check">&#10003;</span> Python 3.11+</div>
+      <div class="req-item"><span class="req-check">&#10003;</span> External drive plugged in</div>
+    </div>
+  </div>
+
+  <!-- Step 1 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-number">1</div>
+      <h3>Install smartmontools</h3>
+    </div>
+    <p>This gives you <code>smartctl</code>, the tool that reads SMART diagnostics from your drive.</p>
+    <p>Open <strong>Terminal</strong> and run:</p>
+    <pre><code>brew install smartmontools</code></pre>
+
+    <div class="callout info">
+      <span class="callout-icon">&#x2139;&#xFE0F;</span>
+      <div>
+        <strong>Don't have Homebrew?</strong> Install it first:<br>
+        <code>/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</code>
+      </div>
+    </div>
+
+    <p>Verify it worked:</p>
+    <pre><code>smartctl --version
+<span class="cmd-output"># Should print: smartctl 7.4 ...</span></code></pre>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-number">2</div>
+      <h3>Download and install disk-health-checker</h3>
+    </div>
+    <p>Clone the repository and install it in a virtual environment:</p>
+    <pre><code>git clone https://github.com/quanb24/disk-health-checker.git
+cd disk-health-checker
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .</code></pre>
+
+    <p>Verify it worked:</p>
+    <pre><code>disk-health-checker --version
+<span class="cmd-output"># Should print: disk-health-checker 0.2.0</span></code></pre>
+  </div>
+
+  <!-- Step 3 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-number">3</div>
+      <h3>Plug in your external drive</h3>
+    </div>
+    <p>Connect the USB drive and wait a few seconds for macOS to mount it.</p>
+  </div>
+
+  <!-- Step 4 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-number">4</div>
+      <h3>See what drives are connected</h3>
+    </div>
+    <pre><code>disk-health-checker detect</code></pre>
+    <p>This lists all connected disks with their names, sizes, and device paths (like <code>/dev/disk4</code>). Find your external drive in the list.</p>
+  </div>
+
+  <!-- Step 5 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-number">5</div>
+      <h3>Run the health check</h3>
+    </div>
+
+    <p><strong>Interactive mode (easiest):</strong></p>
+    <pre><code>disk-health-checker smart</code></pre>
+    <p>A numbered list of drives appears. Type the number for your external drive and press Enter.</p>
+
+    <p><strong>Or specify the device directly:</strong></p>
+    <pre><code>disk-health-checker smart --device /dev/disk4</code></pre>
+    <p>Replace <code>/dev/disk4</code> with whatever <code>detect</code> showed for your drive.</p>
+  </div>
+
+  <!-- Step 6 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-number">6</div>
+      <h3>Read your results</h3>
+    </div>
+    <p>You'll get a clear verdict with a confidence rating, findings, and next steps:</p>
+    <div class="verdict-grid">
+      <div class="verdict-card pass">
+        <div class="label">PASS</div>
+        <div class="desc">Drive is healthy. No action needed.</div>
+      </div>
+      <div class="verdict-card warn">
+        <div class="label">WARNING</div>
+        <div class="desc">Early signs of wear. Keep an eye on it.</div>
+      </div>
+      <div class="verdict-card fail">
+        <div class="label">FAIL</div>
+        <div class="desc">Serious problems. Back up data immediately.</div>
+      </div>
+      <div class="verdict-card unknown">
+        <div class="label">UNKNOWN</div>
+        <div class="desc">Not enough data. Common with some USB enclosures.</div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Step 7 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-number optional">7</div>
+      <h3>Get a beginner-friendly explanation</h3>
+    </div>
+    <p>The <code>doctor</code> command explains every finding in plain language:</p>
+    <pre><code>disk-health-checker doctor --device /dev/disk4</code></pre>
+  </div>
+
+  <!-- Step 8 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-number optional">8</div>
+      <h3>Save results as JSON</h3>
+    </div>
+    <pre><code>disk-health-checker smart --device /dev/disk4 --json > my-drive-report.json</code></pre>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Troubleshooting -->
+  <h2 style="font-size: 1.3rem; margin-bottom: 1rem;">Troubleshooting</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Problem</th>
+        <th>Fix</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>smartctl: command not found</code></td>
+        <td>Run <code>brew install smartmontools</code> and restart Terminal</td>
+      </tr>
+      <tr>
+        <td><code>python3: command not found</code></td>
+        <td>Install Python from <strong>python.org</strong> or run <code>brew install python</code></td>
+      </tr>
+      <tr>
+        <td>Drive shows UNKNOWN verdict</td>
+        <td>Some USB enclosures block SMART access &mdash; hardware limitation, not a bug</td>
+      </tr>
+      <tr>
+        <td>Permission denied</td>
+        <td>Run with <code>sudo disk-health-checker smart --device /dev/diskN</code></td>
+      </tr>
+      <tr>
+        <td>Drive not showing in detect</td>
+        <td>Unplug and replug the drive, wait 5 seconds, try again</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Quick Reference -->
+  <div class="quick-ref">
+    <h3>Quick Reference &mdash; After Setup</h3>
+    <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.75rem;">
+      Every time you want to check a drive in the future, just run these three commands:
+    </p>
+    <pre><code>cd disk-health-checker
+source .venv/bin/activate
+disk-health-checker smart</code></pre>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <p>Disk Health Checker v0.2.0 &mdash; <a href="https://github.com/quanb24/disk-health-checker">github.com/quanb24/disk-health-checker</a></p>
+    <p style="margin-top: 0.3rem;">MIT License</p>
+  </div>
+
+</div>
+
+</body>
+</html>
